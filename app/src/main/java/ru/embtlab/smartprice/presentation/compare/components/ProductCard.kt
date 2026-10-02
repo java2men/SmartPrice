@@ -1,17 +1,20 @@
-// presentation/compare/components/ProductCard.kt
 package ru.embtlab.smartprice.presentation.compare.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import ru.embtlab.smartprice.domain.model.CalculatedItem
 import ru.embtlab.smartprice.domain.model.DiscountType
 import ru.embtlab.smartprice.domain.model.ProductItem
@@ -20,6 +23,7 @@ import ru.embtlab.smartprice.domain.model.UnitCategory
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
 import ru.embtlab.smartprice.presentation.theme.icons.Camera
 import ru.embtlab.smartprice.presentation.theme.icons.Delete
+import ru.embtlab.smartprice.presentation.theme.icons.Edit
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -28,13 +32,14 @@ fun ProductCard(
     item: ProductItem,
     calcResult: CalculatedItem?,
     canDelete: Boolean,
+    onNameChange: (String) -> Unit, // <-- Добавили колбэк изменения имени
     onPriceChange: (String) -> Unit,
     onQuantityChange: (String) -> Unit,
     onUnitChange: (ProductUnit) -> Unit,
     onDiscountTypeChange: (DiscountType) -> Unit,
     onCustomDiscountChange: (String) -> Unit,
-    onDelete: () -> Unit,
     onScanClick: () -> Unit,
+    onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isBest = calcResult?.isBestChoice == true
@@ -54,19 +59,50 @@ fun ProductCard(
                 .padding(16.dp)
                 .fillMaxWidth()
         ) {
-            // Верхняя строка: Название и кнопка удаления
+            // Верхняя строка: Редактируемое Название и Кнопки действий
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = item.name.ifBlank { "Товар" },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BasicTextField(
+                        value = item.name,
+                        onValueChange = onNameChange,
+                        textStyle = TextStyle(
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        singleLine = true,
+                        decorationBox = { innerTextField ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (item.name.isEmpty()) {
+                                    Text(
+                                        text = "Название товара",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    )
+                                }
+                                innerTextField()
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = AppIcons.Default.Edit,
+                                    contentDescription = "Редактировать название",
+                                    tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
                 Row {
-                    // Кнопка вызова камеры для этого товара
                     IconButton(onClick = onScanClick) {
                         Icon(
                             imageVector = AppIcons.Default.Camera,
@@ -144,7 +180,7 @@ fun ProductCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Блок выбора акции (Чипы)
+            // Блок акций
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -164,7 +200,6 @@ fun ProductCard(
                 }
             }
 
-            // Дополнительное поле ввода, если выбран процент
             if (item.discountType == DiscountType.PERCENT) {
                 Spacer(modifier = Modifier.height(6.dp))
                 OutlinedTextField(

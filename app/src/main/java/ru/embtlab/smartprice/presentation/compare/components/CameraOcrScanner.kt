@@ -130,7 +130,8 @@ fun CameraOcrScanner(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(Color.Black.copy(alpha = 0.75f))
-                .padding(16.dp),
+                .navigationBarsPadding() // <-- Поднимает содержимое над системными кнопками Android
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             val priceStr = latestParsed?.price?.let { "$it ₽" } ?: "—"
@@ -174,5 +175,6 @@ fun CameraOcrScanner(
                 }
             }
         }
+
     }
 }

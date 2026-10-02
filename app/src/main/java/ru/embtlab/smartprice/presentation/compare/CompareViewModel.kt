@@ -118,4 +118,8 @@ class CompareViewModel(application: Application) : AndroidViewModel(application)
             state.copy(items = updatedList, results = results, hasIncompatibleUnits = hasConflict)
         }
     }
+
+    fun onNameChanged(productId: String, newName: String) {
+        updateProduct(productId) { it.copy(name = newName) }
+    }
 }

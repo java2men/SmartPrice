@@ -36,6 +36,9 @@ fun CompareScreen(
     // ID товара, для которого сейчас открыта камера (null — камера закрыта)
     var scanningProductId by remember { mutableStateOf<String?>(null) }
 
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var saveTitleInput by remember { mutableStateOf("") }
+
     // Состояние запроса разрешения на камеру
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
 
@@ -91,12 +94,59 @@ fun CompareScreen(
                 actions = {
                     // Кнопка сохранения в историю
                     if (canSaveResult) {
-                        IconButton(onClick = { viewModel.saveCurrentComparison() }) {
+                        IconButton(
+                            onClick = {
+                                // Формируем начальный заголовок, например "Товар 1 vs Товар 2"
+                                val names = uiState.items.mapNotNull { it.name.ifBlank { null } }
+                                saveTitleInput = if (names.isNotEmpty()) names.joinToString(" vs ") else ""
+                                showSaveDialog = true
+                            }
+                        ) {
                             Icon(
                                 imageVector = AppIcons.Default.BookmarkAdd,
                                 contentDescription = "Сохранить в историю"
                             )
                         }
+                    }
+
+                    //Сам диалог подтверждения сохранения
+                    if (showSaveDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showSaveDialog = false },
+                            title = { Text("Сохранить сравнение") },
+                            text = {
+                                Column {
+                                    Text(
+                                        text = "Задайте понятное название для поиска в истории:",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    OutlinedTextField(
+                                        value = saveTitleInput,
+                                        onValueChange = { saveTitleInput = it },
+                                        label = { Text("Название корзины/товаров") },
+                                        placeholder = { Text("например, Молоко в Магните") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        viewModel.saveCurrentComparison(saveTitleInput)
+                                        showSaveDialog = false
+                                    }
+                                ) {
+                                    Text("Сохранить")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showSaveDialog = false }) {
+                                    Text("Отмена")
+                                }
+                            }
+                        )
                     }
 
                     // Кнопка просмотра истории
@@ -167,6 +217,7 @@ fun CompareScreen(
                     item = item,
                     calcResult = calcResult,
                     canDelete = uiState.items.size > 2,
+                    onNameChange = { newName -> viewModel.onNameChanged(item.id, newName) }, // <-- ДОБАВЬТЕ ЭТУ СТРОКУ
                     onPriceChange = { newPrice -> viewModel.onPriceChanged(item.id, newPrice) },
                     onQuantityChange = { newQty -> viewModel.onQuantityChanged(item.id, newQty) },
                     onUnitChange = { newUnit -> viewModel.onUnitChanged(item.id, newUnit) },
