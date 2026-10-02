@@ -32,14 +32,7 @@ fun ProductCard(
     item: ProductItem,
     calcResult: CalculatedItem?,
     canDelete: Boolean,
-    onNameChange: (String) -> Unit, // <-- Добавили колбэк изменения имени
-    onPriceChange: (String) -> Unit,
-    onQuantityChange: (String) -> Unit,
-    onUnitChange: (ProductUnit) -> Unit,
-    onDiscountTypeChange: (DiscountType) -> Unit,
-    onCustomDiscountChange: (String) -> Unit,
-    onScanClick: () -> Unit,
-    onDelete: () -> Unit,
+    listener: ProductCardListener,
     modifier: Modifier = Modifier
 ) {
     val isBest = calcResult?.isBestChoice == true
@@ -71,7 +64,7 @@ fun ProductCard(
                 ) {
                     BasicTextField(
                         value = item.name,
-                        onValueChange = onNameChange,
+                        onValueChange = { listener.onNameChange(item.id, it) },
                         textStyle = TextStyle(
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
@@ -103,7 +96,7 @@ fun ProductCard(
                 }
 
                 Row {
-                    IconButton(onClick = onScanClick) {
+                    IconButton(onClick = { listener.onScanClick(item.id) }) {
                         Icon(
                             imageVector = AppIcons.Default.Camera,
                             contentDescription = "Сканировать ценник",
@@ -112,7 +105,7 @@ fun ProductCard(
                     }
 
                     if (canDelete) {
-                        IconButton(onClick = onDelete) {
+                        IconButton(onClick = { listener.onDelete(item.id) }) {
                             Icon(
                                 imageVector = AppIcons.Default.Delete,
                                 contentDescription = "Удалить позицию",
@@ -132,7 +125,7 @@ fun ProductCard(
             ) {
                 OutlinedTextField(
                     value = item.priceInput,
-                    onValueChange = onPriceChange,
+                    onValueChange = { listener.onPriceChange(item.id, it) },
                     label = { Text("Цена (₽)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
@@ -141,7 +134,7 @@ fun ProductCard(
 
                 OutlinedTextField(
                     value = item.quantityInput,
-                    onValueChange = onQuantityChange,
+                    onValueChange = { listener.onQuantityChange(item.id, it) },
                     label = { Text("Кол-во") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
@@ -169,7 +162,7 @@ fun ProductCard(
                             DropdownMenuItem(
                                 text = { Text(unit.label) },
                                 onClick = {
-                                    onUnitChange(unit)
+                                    listener.onUnitChange(item.id, unit)
                                     expanded = false
                                 }
                             )
@@ -194,7 +187,7 @@ fun ProductCard(
                 DiscountType.entries.forEach { type ->
                     FilterChip(
                         selected = item.discountType == type,
-                        onClick = { onDiscountTypeChange(type) },
+                        onClick = { listener.onDiscountTypeChange(item.id, type) },
                         label = { Text(type.label, style = MaterialTheme.typography.labelSmall) }
                     )
                 }
@@ -204,7 +197,7 @@ fun ProductCard(
                 Spacer(modifier = Modifier.height(6.dp))
                 OutlinedTextField(
                     value = item.customDiscountPercentInput,
-                    onValueChange = onCustomDiscountChange,
+                    onValueChange = { listener.onCustomDiscountChange(item.id, it) },
                     label = { Text("Размер скидки (%)") },
                     placeholder = { Text("например, 20") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),

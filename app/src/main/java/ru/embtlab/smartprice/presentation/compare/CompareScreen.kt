@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -16,8 +17,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import ru.embtlab.smartprice.domain.model.DiscountType
+import ru.embtlab.smartprice.domain.model.ProductUnit
 import ru.embtlab.smartprice.presentation.compare.components.CameraOcrScanner
 import ru.embtlab.smartprice.presentation.compare.components.ProductCard
+import ru.embtlab.smartprice.presentation.compare.components.ProductCardListener
 import ru.embtlab.smartprice.presentation.theme.icons.Add
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
 import ru.embtlab.smartprice.presentation.theme.icons.BookmarkAdd
@@ -71,6 +75,20 @@ fun CompareScreen(
             uiState.items.any { it.priceInput.isNotBlank() || it.quantityInput.isNotBlank() }
 
     val canSaveResult = uiState.results.any { it.isBestChoice } && !uiState.hasIncompatibleUnits
+
+    // Создаем единственный стабильный слушатель для всех карточек:
+    val cardListener = remember(viewModel) {
+        object : ProductCardListener {
+            override fun onNameChange(id: String, name: String) = viewModel.onNameChanged(id, name)
+            override fun onPriceChange(id: String, price: String) = viewModel.onPriceChanged(id, price)
+            override fun onQuantityChange(id: String, quantity: String) = viewModel.onQuantityChanged(id, quantity)
+            override fun onUnitChange(id: String, unit: ProductUnit) = viewModel.onUnitChanged(id, unit)
+            override fun onDiscountTypeChange(id: String, type: DiscountType) = viewModel.onDiscountTypeChanged(id, type)
+            override fun onCustomDiscountChange(id: String, percent: String) = viewModel.onCustomDiscountChanged(id, percent)
+            override fun onScanClick(id: String) = viewModel.startScanning(id)
+            override fun onDelete(id: String) = viewModel.removeProduct(id)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -150,6 +168,8 @@ fun CompareScreen(
                 }
             }
 
+
+
             // Карточки товаров
             items(uiState.items, key = { it.id }) { item ->
                 val calcResult = uiState.results.find { it.product.id == item.id }
@@ -158,14 +178,7 @@ fun CompareScreen(
                     item = item,
                     calcResult = calcResult,
                     canDelete = uiState.items.size > 2,
-                    onNameChange = { newName -> viewModel.onNameChanged(item.id, newName) },
-                    onPriceChange = { newPrice -> viewModel.onPriceChanged(item.id, newPrice) },
-                    onQuantityChange = { newQty -> viewModel.onQuantityChanged(item.id, newQty) },
-                    onUnitChange = { newUnit -> viewModel.onUnitChanged(item.id, newUnit) },
-                    onDiscountTypeChange = { newType -> viewModel.onDiscountTypeChanged(item.id, newType) },
-                    onCustomDiscountChange = { newPercent -> viewModel.onCustomDiscountChanged(item.id, newPercent) },
-                    onScanClick = { viewModel.startScanning(item.id) },
-                    onDelete = { viewModel.removeProduct(item.id) }
+                    listener = cardListener
                 )
             }
         }
