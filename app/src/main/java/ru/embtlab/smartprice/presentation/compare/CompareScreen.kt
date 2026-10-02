@@ -35,7 +35,6 @@ fun CompareScreen(
     viewModel: CompareViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val historyList by viewModel.history.collectAsState()
 
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
 
@@ -217,9 +216,12 @@ fun CompareScreen(
                 }
             )
         }
-
+        
         // 3. Шторка истории расчётов (Room)
         if (uiState.isHistorySheetOpen) {
+            // ВСТАВЬТЕ СЮДА: история подгружается только когда пользователь реально открыл шторку
+            val historyList by viewModel.history.collectAsState()
+
             ModalBottomSheet(
                 onDismissRequest = { viewModel.setHistorySheetVisible(false) }
             ) {
@@ -294,5 +296,6 @@ fun CompareScreen(
                 }
             }
         }
+
     }
 }

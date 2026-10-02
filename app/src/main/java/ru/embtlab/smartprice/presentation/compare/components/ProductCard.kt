@@ -21,6 +21,7 @@ import ru.embtlab.smartprice.domain.model.ProductItem
 import ru.embtlab.smartprice.domain.model.ProductUnit
 import ru.embtlab.smartprice.domain.model.UnitCategory
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
+import ru.embtlab.smartprice.presentation.theme.icons.ArrowDropDown
 import ru.embtlab.smartprice.presentation.theme.icons.Camera
 import ru.embtlab.smartprice.presentation.theme.icons.Delete
 import ru.embtlab.smartprice.presentation.theme.icons.Edit
@@ -141,20 +142,25 @@ fun ProductCard(
                     modifier = Modifier.weight(1f)
                 )
 
+                // Вместо ExposedDropdownMenuBox используем легкий Box + DropdownMenu
                 var expanded by remember { mutableStateOf(false) }
-                ExposedDropdownMenuBox(
-                    expanded = expanded,
-                    onExpandedChange = { expanded = !expanded },
-                    modifier = Modifier.weight(0.9f)
-                ) {
-                    OutlinedTextField(
-                        value = item.unit.label,
-                        onValueChange = {},
-                        readOnly = true,
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier.menuAnchor()
-                    )
-                    ExposedDropdownMenu(
+
+                Box(modifier = Modifier.weight(0.9f)) {
+                    OutlinedCard(
+                        onClick = { expanded = true },
+                        modifier = Modifier.fillMaxWidth().height(56.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(text = item.unit.label, style = MaterialTheme.typography.bodyLarge)
+                            Icon(AppIcons.Default.ArrowDropDown, contentDescription = null)
+                        }
+                    }
+
+                    DropdownMenu(
                         expanded = expanded,
                         onDismissRequest = { expanded = false }
                     ) {
@@ -169,6 +175,7 @@ fun ProductCard(
                         }
                     }
                 }
+
             }
 
             Spacer(modifier = Modifier.height(10.dp))
