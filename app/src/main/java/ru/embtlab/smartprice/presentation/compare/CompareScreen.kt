@@ -1,5 +1,6 @@
 package ru.embtlab.smartprice.presentation.compare
 
+import android.Manifest
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,6 +11,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
+import ru.embtlab.smartprice.presentation.compare.components.CameraOcrScanner
 import ru.embtlab.smartprice.presentation.compare.components.ProductCard
 import ru.embtlab.smartprice.presentation.theme.icons.Add
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
@@ -18,7 +23,7 @@ import ru.embtlab.smartprice.presentation.theme.icons.Delete
 import ru.embtlab.smartprice.presentation.theme.icons.History
 import ru.embtlab.smartprice.presentation.theme.icons.Refresh
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun CompareScreen(
     viewModel: CompareViewModel = viewModel()
@@ -27,6 +32,47 @@ fun CompareScreen(
     val historyList by viewModel.history.collectAsState()
 
     var showHistorySheet by remember { mutableStateOf(false) }
+
+    // ID товара, для которого сейчас открыта камера (null — камера закрыта)
+    var scanningProductId by remember { mutableStateOf<String?>(null) }
+
+    // Состояние запроса разрешения на камеру
+    val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
+
+    // Если открыт режим сканирования камеры
+    if (scanningProductId != null) {
+        if (cameraPermissionState.status.isGranted) {
+            CameraOcrScanner(
+                onParsed = { parsed ->
+                    val id = scanningProductId ?: return@CameraOcrScanner
+                    parsed.price?.let { viewModel.onPriceChanged(id, it) }
+                    parsed.quantity?.let { viewModel.onQuantityChanged(id, it) }
+                    parsed.unit?.let { viewModel.onUnitChanged(id, it) }
+                },
+                onClose = { scanningProductId = null }
+            )
+        } else {
+            // Диалог запроса прав на камеру
+            AlertDialog(
+                onDismissRequest = { scanningProductId = null },
+                title = { Text("Требуется доступ к камере") },
+                text = { Text("Чтобы распознавать ценники прямо в магазине, приложению необходим доступ к камере.") },
+                confirmButton = {
+                    Button(
+                        onClick = { cameraPermissionState.launchPermissionRequest() }
+                    ) {
+                        Text("Предоставить")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { scanningProductId = null }) {
+                        Text("Отмена")
+                    }
+                }
+            )
+        }
+        return
+    }
 
     // Проверяем, есть ли что сбрасывать
     val hasDataToReset = uiState.items.size > 2 ||
@@ -126,6 +172,7 @@ fun CompareScreen(
                     onUnitChange = { newUnit -> viewModel.onUnitChanged(item.id, newUnit) },
                     onDiscountTypeChange = { newType -> viewModel.onDiscountTypeChanged(item.id, newType) },
                     onCustomDiscountChange = { newPercent -> viewModel.onCustomDiscountChanged(item.id, newPercent) },
+                    onScanClick = { scanningProductId = item.id },
                     onDelete = { viewModel.removeProduct(item.id) }
                 )
             }

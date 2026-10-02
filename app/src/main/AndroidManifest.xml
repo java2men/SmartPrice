@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Разрешение камеры -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-permission android:name="android.permission.CAMERA" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -11,6 +15,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.SmartPrice">
+
+        <!-- Автозагрузка ML-модели распознавания текста при установке приложения -->
+        <meta-data
+            android:name="com.google.ml.vision.DEPENDENCIES"
+            android:value="ocr" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

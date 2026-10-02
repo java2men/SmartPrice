@@ -18,6 +18,7 @@ import ru.embtlab.smartprice.domain.model.ProductItem
 import ru.embtlab.smartprice.domain.model.ProductUnit
 import ru.embtlab.smartprice.domain.model.UnitCategory
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
+import ru.embtlab.smartprice.presentation.theme.icons.Camera
 import ru.embtlab.smartprice.presentation.theme.icons.Delete
 import java.util.Locale
 
@@ -33,6 +34,7 @@ fun ProductCard(
     onDiscountTypeChange: (DiscountType) -> Unit,
     onCustomDiscountChange: (String) -> Unit,
     onDelete: () -> Unit,
+    onScanClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isBest = calcResult?.isBestChoice == true
@@ -63,13 +65,24 @@ fun ProductCard(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                if (canDelete) {
-                    IconButton(onClick = onDelete) {
+                Row {
+                    // Кнопка вызова камеры для этого товара
+                    IconButton(onClick = onScanClick) {
                         Icon(
-                            imageVector = AppIcons.Default.Delete,
-                            contentDescription = "Удалить позицию",
-                            tint = MaterialTheme.colorScheme.error
+                            imageVector = AppIcons.Default.Camera,
+                            contentDescription = "Сканировать ценник",
+                            tint = MaterialTheme.colorScheme.primary
                         )
+                    }
+
+                    if (canDelete) {
+                        IconButton(onClick = onDelete) {
+                            Icon(
+                                imageVector = AppIcons.Default.Delete,
+                                contentDescription = "Удалить позицию",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 }
             }
