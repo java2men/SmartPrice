@@ -122,4 +122,45 @@ class CompareViewModel(application: Application) : AndroidViewModel(application)
     fun onNameChanged(productId: String, newName: String) {
         updateProduct(productId) { it.copy(name = newName) }
     }
+
+    // Управление шторкой истории
+    fun setHistorySheetVisible(isOpen: Boolean) {
+        _uiState.update { it.copy(isHistorySheetOpen = isOpen) }
+    }
+
+    // Управление камерой
+    fun startScanning(productId: String) {
+        _uiState.update { it.copy(scanningProductId = productId) }
+    }
+
+    fun stopScanning() {
+        _uiState.update { it.copy(scanningProductId = null) }
+    }
+
+    // Управление диалогом сохранения
+    fun openSaveDialog() {
+        val names = _uiState.value.items.mapNotNull { it.name.ifBlank { null } }
+        val defaultTitle = if (names.isNotEmpty()) names.joinToString(" vs ") else ""
+        _uiState.update {
+            it.copy(
+                isSaveDialogOpen = true,
+                saveDialogTitleInput = defaultTitle
+            )
+        }
+    }
+
+    fun onSaveDialogTitleChanged(newTitle: String) {
+        _uiState.update { it.copy(saveDialogTitleInput = newTitle) }
+    }
+
+    fun dismissSaveDialog() {
+        _uiState.update { it.copy(isSaveDialogOpen = false) }
+    }
+
+    fun confirmSaveComparison() {
+        val title = _uiState.value.saveDialogTitleInput
+        saveCurrentComparison(title)
+        _uiState.update { it.copy(isSaveDialogOpen = false) }
+    }
+
 }

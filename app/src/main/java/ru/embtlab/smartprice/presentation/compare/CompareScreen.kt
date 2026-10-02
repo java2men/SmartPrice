@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -31,44 +33,32 @@ fun CompareScreen(
     val uiState by viewModel.uiState.collectAsState()
     val historyList by viewModel.history.collectAsState()
 
-    var showHistorySheet by remember { mutableStateOf(false) }
-
-    // ID товара, для которого сейчас открыта камера (null — камера закрыта)
-    var scanningProductId by remember { mutableStateOf<String?>(null) }
-
-    var showSaveDialog by remember { mutableStateOf(false) }
-    var saveTitleInput by remember { mutableStateOf("") }
-
-    // Состояние запроса разрешения на камеру
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
 
-    // Если открыт режим сканирования камеры
-    if (scanningProductId != null) {
+    // 1. Полноэкранный сканер камеры через CameraX
+    if (uiState.scanningProductId != null) {
         if (cameraPermissionState.status.isGranted) {
             CameraOcrScanner(
                 onParsed = { parsed ->
-                    val id = scanningProductId ?: return@CameraOcrScanner
+                    val id = uiState.scanningProductId ?: return@CameraOcrScanner
                     parsed.price?.let { viewModel.onPriceChanged(id, it) }
                     parsed.quantity?.let { viewModel.onQuantityChanged(id, it) }
                     parsed.unit?.let { viewModel.onUnitChanged(id, it) }
                 },
-                onClose = { scanningProductId = null }
+                onClose = { viewModel.stopScanning() }
             )
         } else {
-            // Диалог запроса прав на камеру
             AlertDialog(
-                onDismissRequest = { scanningProductId = null },
+                onDismissRequest = { viewModel.stopScanning() },
                 title = { Text("Требуется доступ к камере") },
                 text = { Text("Чтобы распознавать ценники прямо в магазине, приложению необходим доступ к камере.") },
                 confirmButton = {
-                    Button(
-                        onClick = { cameraPermissionState.launchPermissionRequest() }
-                    ) {
+                    Button(onClick = { cameraPermissionState.launchPermissionRequest() }) {
                         Text("Предоставить")
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { scanningProductId = null }) {
+                    TextButton(onClick = { viewModel.stopScanning() }) {
                         Text("Отмена")
                     }
                 }
@@ -77,11 +67,9 @@ fun CompareScreen(
         return
     }
 
-    // Проверяем, есть ли что сбрасывать
     val hasDataToReset = uiState.items.size > 2 ||
             uiState.items.any { it.priceInput.isNotBlank() || it.quantityInput.isNotBlank() }
 
-    // Есть ли готовый расчет победителя для сохранения
     val canSaveResult = uiState.results.any { it.isBestChoice } && !uiState.hasIncompatibleUnits
 
     Scaffold(
@@ -92,16 +80,9 @@ fun CompareScreen(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ),
                 actions = {
-                    // Кнопка сохранения в историю
+                    // Кнопка открытия диалога сохранения
                     if (canSaveResult) {
-                        IconButton(
-                            onClick = {
-                                // Формируем начальный заголовок, например "Товар 1 vs Товар 2"
-                                val names = uiState.items.mapNotNull { it.name.ifBlank { null } }
-                                saveTitleInput = if (names.isNotEmpty()) names.joinToString(" vs ") else ""
-                                showSaveDialog = true
-                            }
-                        ) {
+                        IconButton(onClick = { viewModel.openSaveDialog() }) {
                             Icon(
                                 imageVector = AppIcons.Default.BookmarkAdd,
                                 contentDescription = "Сохранить в историю"
@@ -109,55 +90,15 @@ fun CompareScreen(
                         }
                     }
 
-                    //Сам диалог подтверждения сохранения
-                    if (showSaveDialog) {
-                        AlertDialog(
-                            onDismissRequest = { showSaveDialog = false },
-                            title = { Text("Сохранить сравнение") },
-                            text = {
-                                Column {
-                                    Text(
-                                        text = "Задайте понятное название для поиска в истории:",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    OutlinedTextField(
-                                        value = saveTitleInput,
-                                        onValueChange = { saveTitleInput = it },
-                                        label = { Text("Название корзины/товаров") },
-                                        placeholder = { Text("например, Молоко в Магните") },
-                                        singleLine = true,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                }
-                            },
-                            confirmButton = {
-                                Button(
-                                    onClick = {
-                                        viewModel.saveCurrentComparison(saveTitleInput)
-                                        showSaveDialog = false
-                                    }
-                                ) {
-                                    Text("Сохранить")
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { showSaveDialog = false }) {
-                                    Text("Отмена")
-                                }
-                            }
-                        )
-                    }
-
-                    // Кнопка просмотра истории
-                    IconButton(onClick = { showHistorySheet = true }) {
+                    // Кнопка открытия шторки истории
+                    IconButton(onClick = { viewModel.setHistorySheetVisible(true) }) {
                         Icon(
                             imageVector = AppIcons.Default.History,
                             contentDescription = "История сравнений"
                         )
                     }
 
-                    // Кнопка быстрой очистки
+                    // Кнопка сброса
                     if (hasDataToReset) {
                         IconButton(onClick = { viewModel.reset() }) {
                             Icon(
@@ -189,7 +130,7 @@ fun CompareScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(top = 16.dp, bottom = 88.dp)
         ) {
-            // Баннер предупреждения при конфликте категорий (кг против литров)
+            // Предупреждение о несовместимости единиц
             if (uiState.hasIncompatibleUnits) {
                 item {
                     Card(
@@ -209,7 +150,7 @@ fun CompareScreen(
                 }
             }
 
-            // Список карточек товаров
+            // Карточки товаров
             items(uiState.items, key = { it.id }) { item ->
                 val calcResult = uiState.results.find { it.product.id == item.id }
 
@@ -217,22 +158,57 @@ fun CompareScreen(
                     item = item,
                     calcResult = calcResult,
                     canDelete = uiState.items.size > 2,
-                    onNameChange = { newName -> viewModel.onNameChanged(item.id, newName) }, // <-- ДОБАВЬТЕ ЭТУ СТРОКУ
+                    onNameChange = { newName -> viewModel.onNameChanged(item.id, newName) },
                     onPriceChange = { newPrice -> viewModel.onPriceChanged(item.id, newPrice) },
                     onQuantityChange = { newQty -> viewModel.onQuantityChanged(item.id, newQty) },
                     onUnitChange = { newUnit -> viewModel.onUnitChanged(item.id, newUnit) },
                     onDiscountTypeChange = { newType -> viewModel.onDiscountTypeChanged(item.id, newType) },
                     onCustomDiscountChange = { newPercent -> viewModel.onCustomDiscountChanged(item.id, newPercent) },
-                    onScanClick = { scanningProductId = item.id },
+                    onScanClick = { viewModel.startScanning(item.id) },
                     onDelete = { viewModel.removeProduct(item.id) }
                 )
             }
         }
 
-        // Шторка с историей расчетов (Room)
-        if (showHistorySheet) {
+        // 2. Диалог сохранения в историю
+        if (uiState.isSaveDialogOpen) {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissSaveDialog() },
+                title = { Text("Сохранить сравнение") },
+                text = {
+                    Column {
+                        Text(
+                            text = "Задайте понятное название для поиска в истории:",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedTextField(
+                            value = uiState.saveDialogTitleInput,
+                            onValueChange = { viewModel.onSaveDialogTitleChanged(it) },
+                            label = { Text("Название") },
+                            placeholder = { Text("например, Молоко в Магните") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = { viewModel.confirmSaveComparison() }) {
+                        Text("Сохранить")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissSaveDialog() }) {
+                        Text("Отмена")
+                    }
+                }
+            )
+        }
+
+        // 3. Шторка истории расчётов (Room)
+        if (uiState.isHistorySheetOpen) {
             ModalBottomSheet(
-                onDismissRequest = { showHistorySheet = false }
+                onDismissRequest = { viewModel.setHistorySheetVisible(false) }
             ) {
                 Column(
                     modifier = Modifier
