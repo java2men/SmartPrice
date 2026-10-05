@@ -8,13 +8,14 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.navigation.compose.rememberNavController
 import dagger.hilt.android.AndroidEntryPoint
 import ru.embtlab.smartprice.domain.model.AppThemeMode
-import ru.embtlab.smartprice.presentation.compare.CompareScreen
 import ru.embtlab.smartprice.presentation.main.MainViewModel
-import ru.embtlab.smartprice.presentation.settings.SettingsScreen
+import ru.embtlab.smartprice.presentation.navigation.AppNavGraph
 import ru.embtlab.smartprice.presentation.theme.SmartPriceTheme
 
 @AndroidEntryPoint
@@ -40,13 +41,8 @@ class MainActivity : ComponentActivity() {
                 dynamicColor = settings.dynamicColor
             ) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    var isSettingsOpen by remember { mutableStateOf(false) }
-
-                    if (isSettingsOpen) {
-                        SettingsScreen(onNavigateBack = { isSettingsOpen = false })
-                    } else {
-                        CompareScreen(onOpenSettings = { isSettingsOpen = true })
-                    }
+                    val navController = rememberNavController()
+                    AppNavGraph(navController = navController)
                 }
             }
         }
