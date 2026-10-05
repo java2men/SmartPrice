@@ -17,10 +17,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import kotlinx.coroutines.launch
 import ru.embtlab.smartprice.domain.model.CardStylePreset
 import ru.embtlab.smartprice.domain.model.DiscountType
 import ru.embtlab.smartprice.domain.model.ProductUnit
@@ -37,7 +37,10 @@ fun CompareScreen(
     val uiState by viewModel.uiState.collectAsState()
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
 
-    // 1. Полноэкранный сканер ценников
+    // Состояния для показа SnackBar
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+
     if (uiState.scanningProductId != null) {
         if (cameraPermissionState.status.isGranted) {
             CameraOcrScanner(
@@ -52,10 +55,10 @@ fun CompareScreen(
         } else {
             AlertDialog(
                 onDismissRequest = { viewModel.stopScanning() },
-                title = { Text("Требуется доступ к камере") },
-                text = { Text("Чтобы распознавать ценники прямо в магазине, необходим доступ к камере.") },
+                title = { Text("Нужен доступ к камере") },
+                text = { Text("Камера необходима для быстрого распознавания ценников.") },
                 confirmButton = {
-                    Button(onClick = { cameraPermissionState.launchPermissionRequest() }) { Text("Предоставить") }
+                    Button(onClick = { cameraPermissionState.launchPermissionRequest() }) { Text("Разрешить") }
                 },
                 dismissButton = {
                     TextButton(onClick = { viewModel.stopScanning() }) { Text("Отмена") }
@@ -83,6 +86,12 @@ fun CompareScreen(
     }
 
     Scaffold(
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.navigationBarsPadding()
+            )
+        },
         topBar = {
             TopAppBar(
                 title = { Text("Умная Цена") },
@@ -97,7 +106,21 @@ fun CompareScreen(
                         Icon(imageVector = AppIcons.Default.History, contentDescription = "История")
                     }
                     if (hasDataToReset) {
-                        IconButton(onClick = { viewModel.reset() }) {
+                        IconButton(onClick = {
+                            viewModel.resetWithBackup()
+                            coroutineScope.launch {
+                                // Снимаем предыдущий снэкбар, если он еще отображался
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                val result = snackbarHostState.showSnackbar(
+                                    message = "Все товары очищены",
+                                    actionLabel = "Отменить",
+                                    duration = SnackbarDuration.Short
+                                )
+                                if (result == SnackbarResult.ActionPerformed) {
+                                    viewModel.undoReset()
+                                }
+                            }
+                        }) {
                             Icon(imageVector = AppIcons.Default.Refresh, contentDescription = "Сброс")
                         }
                     }
@@ -107,7 +130,6 @@ fun CompareScreen(
                 }
             )
         },
-
         floatingActionButton = {
             BadgedBox(
                 badge = {
@@ -138,6 +160,7 @@ fun CompareScreen(
                                 text = "$count",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 4.dp),
                                 maxLines = 1,
                                 softWrap = false
                             )
@@ -169,10 +192,12 @@ fun CompareScreen(
                 }
             }
         }
-
     ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 16.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(top = 16.dp, bottom = 88.dp)
         ) {
@@ -184,7 +209,7 @@ fun CompareScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "Нельзя сравнивать разные меры (например, литры и килограммы). Выберите одинаковую категорию единиц.",
+                            text = "Нельзя сравнивать товары разных категорий (например, вес и объём)",
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(12.dp)
@@ -193,7 +218,6 @@ fun CompareScreen(
                 }
             }
 
-            // Динамический выбор карточки согласно настройке
             items(uiState.items, key = { it.id }) { item ->
                 val calcResult = uiState.results.find { it.product.id == item.id }
                 when (uiState.cardStyle) {
@@ -225,7 +249,6 @@ fun CompareScreen(
             }
         }
 
-        // Диалоги и шторки вынесены в отдельные виджеты
         if (uiState.isSaveDialogOpen) {
             SaveComparisonDialog(
                 titleInput = uiState.saveDialogTitleInput,

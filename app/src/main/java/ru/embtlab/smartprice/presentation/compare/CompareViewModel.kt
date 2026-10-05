@@ -30,6 +30,8 @@ class CompareViewModel @Inject constructor(
     val history: StateFlow<List<SavedComparison>> = getHistoryUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private var lastBackupState: List<ProductItem>? = null
+
     init {
         viewModelScope.launch {
             settingsDataStore.settingsFlow.collect { settings ->
@@ -203,6 +205,35 @@ class CompareViewModel @Inject constructor(
                 removeProduct(productId)
             }
         }
+    }
+
+    fun resetWithBackup() {
+        // Сохраняем снимок текущих карточек перед очисткой
+        lastBackupState = _uiState.value.items
+
+        // Сбрасываем к исходному состоянию из 2 пустых товаров
+        _uiState.update { state ->
+            CompareUiState(
+                cardStyle = state.cardStyle,
+                items = listOf(
+                    ProductItem(name = "Товар 1"),
+                    ProductItem(name = "Товар 2")
+                )
+            )
+        }
+    }
+
+    fun undoReset() {
+        val backup = lastBackupState ?: return
+        val (results, hasConflict) = calculateComparisonUseCase(backup)
+        _uiState.update { state ->
+            state.copy(
+                items = backup,
+                results = results,
+                hasIncompatibleUnits = hasConflict
+            )
+        }
+        lastBackupState = null
     }
 
 }
