@@ -163,4 +163,18 @@ class CompareViewModel(application: Application) : AndroidViewModel(application)
         _uiState.update { it.copy(isSaveDialogOpen = false) }
     }
 
+    // presentation/compare/CompareViewModel.kt
+    fun setCardStyle(preset: CardStylePreset) {
+        _uiState.update { it.copy(cardStyle = preset, isSettingsDialogOpen = false) }
+        // При желании здесь можно сохранить выбор в SharedPreferences или DataStore
+    }
+
+    fun openSettingsDialog() {
+        _uiState.update { it.copy(isSettingsDialogOpen = true) }
+    }
+
+    fun dismissSettingsDialog() {
+        _uiState.update { it.copy(isSettingsDialogOpen = false) }
+    }
+
 }

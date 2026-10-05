@@ -3,7 +3,9 @@ package ru.embtlab.smartprice.presentation.compare.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -25,10 +27,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.embtlab.smartprice.domain.model.CalculatedItem
 import ru.embtlab.smartprice.domain.model.ProductItem
+import ru.embtlab.smartprice.domain.model.ProductUnit
 import ru.embtlab.smartprice.presentation.compare.util.InputFormatters
 
 @Composable
-fun ProductCard(
+fun KeypadPresetCard(
     item: ProductItem,
     calcResult: CalculatedItem?,
     canDelete: Boolean,
@@ -37,9 +40,13 @@ fun ProductCard(
 ) {
     val focusManager = LocalFocusManager.current
     val quantityFocusRequester = remember { FocusRequester() }
-
     val isBest = calcResult?.isBestChoice == true
     val borderColor = if (isBest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+
+    // Популярные фасовки для быстрого тапа
+    val weightPresets = listOf("180", "400", "800", "900", "1000")
+    val volumePresets = listOf("450", "900", "1000", "1500")
+    val activePresets = if (item.unit == ProductUnit.MILLILITER || item.unit == ProductUnit.LITER) volumePresets else weightPresets
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -54,7 +61,7 @@ fun ProductCard(
             ProductHeader(id = item.id, name = item.name, canDelete = canDelete, listener = listener)
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Сплит-блок
+            // Ввод цены и количества
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -64,39 +71,24 @@ fun ProductCard(
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Цена
-                Box(
-                    modifier = Modifier.weight(1.1f).fillMaxHeight().padding(horizontal = 12.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
+                Box(modifier = Modifier.weight(1.1f).fillMaxHeight().padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) {
                     if (item.priceInput.isEmpty()) {
                         Text("Цена", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
                     }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        BasicTextField(
-                            value = item.priceInput,
-                            onValueChange = { listener.onPriceChange(item.id, InputFormatters.sanitizePrice(it, item.priceInput)) },
-                            textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface),
-                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
-                            keyboardActions = KeyboardActions(onNext = { quantityFocusRequester.requestFocus() }),
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (item.priceInput.isNotEmpty()) {
-                            Text("₽", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.outline)
-                        }
-                    }
+                    BasicTextField(
+                        value = item.priceInput,
+                        onValueChange = { listener.onPriceChange(item.id, InputFormatters.sanitizePrice(it, item.priceInput)) },
+                        textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { quantityFocusRequester.requestFocus() }),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
 
-                // Разделитель
                 Box(modifier = Modifier.width(1.dp).fillMaxHeight(0.6f).background(MaterialTheme.colorScheme.outlineVariant))
 
-                // Количество + Единицы
                 Row(
                     modifier = Modifier.weight(1.3f).fillMaxHeight().padding(start = 12.dp, end = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -120,7 +112,31 @@ fun ProductCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Чипсы популярных фасовок (шринкфляция в 1 тап)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                activePresets.forEach { presetVal ->
+                    SuggestionChip(
+                        onClick = {
+                            listener.onQuantityChange(item.id, presetVal)
+                            // Если выбрано 1000 г/мл, переводим в 1 кг/л
+                            if (presetVal == "1000" && item.unit == ProductUnit.GRAM) {
+                                listener.onUnitChange(item.id, ProductUnit.KILOGRAM)
+                                listener.onQuantityChange(item.id, "1")
+                            }
+                        },
+                        label = { Text("$presetVal ${item.unit.label}", style = MaterialTheme.typography.labelSmall) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
             DiscountSelectorRow(item = item, listener = listener)
             ProductCalculationFooter(unit = item.unit, calcResult = calcResult)
         }

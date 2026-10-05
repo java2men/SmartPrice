@@ -5,40 +5,27 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import ru.embtlab.smartprice.domain.model.CardStylePreset
 import ru.embtlab.smartprice.domain.model.DiscountType
 import ru.embtlab.smartprice.domain.model.ProductUnit
-import ru.embtlab.smartprice.presentation.compare.components.CameraOcrScanner
-import ru.embtlab.smartprice.presentation.compare.components.ProductCard
-import ru.embtlab.smartprice.presentation.compare.components.ProductCardListener
-import ru.embtlab.smartprice.presentation.theme.icons.Add
-import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
-import ru.embtlab.smartprice.presentation.theme.icons.BookmarkAdd
-import ru.embtlab.smartprice.presentation.theme.icons.Delete
-import ru.embtlab.smartprice.presentation.theme.icons.History
-import ru.embtlab.smartprice.presentation.theme.icons.Refresh
+import ru.embtlab.smartprice.presentation.compare.components.*
+import ru.embtlab.smartprice.presentation.compare.components.dialogs.*
+import ru.embtlab.smartprice.presentation.theme.icons.*
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
-fun CompareScreen(
-    viewModel: CompareViewModel = viewModel()
-) {
+fun CompareScreen(viewModel: CompareViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
-
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
 
-    // 1. Полноэкранный сканер камеры через CameraX
+    // 1. Полноэкранный сканер ценников
     if (uiState.scanningProductId != null) {
         if (cameraPermissionState.status.isGranted) {
             CameraOcrScanner(
@@ -54,16 +41,12 @@ fun CompareScreen(
             AlertDialog(
                 onDismissRequest = { viewModel.stopScanning() },
                 title = { Text("Требуется доступ к камере") },
-                text = { Text("Чтобы распознавать ценники прямо в магазине, приложению необходим доступ к камере.") },
+                text = { Text("Чтобы распознавать ценники прямо в магазине, необходим доступ к камере.") },
                 confirmButton = {
-                    Button(onClick = { cameraPermissionState.launchPermissionRequest() }) {
-                        Text("Предоставить")
-                    }
+                    Button(onClick = { cameraPermissionState.launchPermissionRequest() }) { Text("Предоставить") }
                 },
                 dismissButton = {
-                    TextButton(onClick = { viewModel.stopScanning() }) {
-                        Text("Отмена")
-                    }
+                    TextButton(onClick = { viewModel.stopScanning() }) { Text("Отмена") }
                 }
             )
         }
@@ -72,10 +55,9 @@ fun CompareScreen(
 
     val hasDataToReset = uiState.items.size > 2 ||
             uiState.items.any { it.priceInput.isNotBlank() || it.quantityInput.isNotBlank() }
-
     val canSaveResult = uiState.results.any { it.isBestChoice } && !uiState.hasIncompatibleUnits
 
-    // Создаем единственный стабильный слушатель для всех карточек:
+    // Стабильный слушатель действий
     val cardListener = remember(viewModel) {
         object : ProductCardListener {
             override fun onNameChange(id: String, name: String) = viewModel.onNameChanged(id, name)
@@ -93,36 +75,23 @@ fun CompareScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Умная Цена") },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                ),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 actions = {
-                    // Кнопка открытия диалога сохранения
                     if (canSaveResult) {
                         IconButton(onClick = { viewModel.openSaveDialog() }) {
-                            Icon(
-                                imageVector = AppIcons.Default.BookmarkAdd,
-                                contentDescription = "Сохранить в историю"
-                            )
+                            Icon(imageVector = AppIcons.Default.BookmarkAdd, contentDescription = "Сохранить")
                         }
                     }
-
-                    // Кнопка открытия шторки истории
                     IconButton(onClick = { viewModel.setHistorySheetVisible(true) }) {
-                        Icon(
-                            imageVector = AppIcons.Default.History,
-                            contentDescription = "История сравнений"
-                        )
+                        Icon(imageVector = AppIcons.Default.History, contentDescription = "История")
                     }
-
-                    // Кнопка сброса
                     if (hasDataToReset) {
                         IconButton(onClick = { viewModel.reset() }) {
-                            Icon(
-                                imageVector = AppIcons.Default.Refresh,
-                                contentDescription = "Очистить всё"
-                            )
+                            Icon(imageVector = AppIcons.Default.Refresh, contentDescription = "Сброс")
                         }
+                    }
+                    IconButton(onClick = { viewModel.openSettingsDialog() }) {
+                        Icon(imageVector = AppIcons.Default.Tune, contentDescription = "Вид карточек")
                     }
                 }
             )
@@ -132,33 +101,24 @@ fun CompareScreen(
                 onClick = { viewModel.addProduct() },
                 containerColor = MaterialTheme.colorScheme.primary
             ) {
-                Icon(
-                    imageVector = AppIcons.Default.Add,
-                    contentDescription = "Добавить товар"
-                )
+                Icon(imageVector = AppIcons.Default.Add, contentDescription = "Добавить товар")
             }
         }
     ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(top = 16.dp, bottom = 88.dp)
         ) {
-            // Предупреждение о несовместимости единиц
             if (uiState.hasIncompatibleUnits) {
                 item {
                     Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer
-                        ),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                         shape = MaterialTheme.shapes.small,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "Нельзя корректно сравнить разные меры (например, литры и килограммы). Выберите одинаковую категорию единиц.",
+                            text = "Нельзя сравнивать разные меры (например, литры и килограммы). Выберите одинаковую категорию единиц.",
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(12.dp)
@@ -167,135 +127,63 @@ fun CompareScreen(
                 }
             }
 
-
-
-            // Карточки товаров
+            // Динамический выбор карточки согласно настройке
             items(uiState.items, key = { it.id }) { item ->
                 val calcResult = uiState.results.find { it.product.id == item.id }
-
-                ProductCard(
-                    item = item,
-                    calcResult = calcResult,
-                    canDelete = uiState.items.size > 2,
-                    listener = cardListener
-                )
+                when (uiState.cardStyle) {
+                    CardStylePreset.CLASSIC -> {
+                        ProductCard(
+                            item = item,
+                            calcResult = calcResult,
+                            canDelete = uiState.items.size > 2,
+                            listener = cardListener
+                        )
+                    }
+                    CardStylePreset.SMART_SINGLE_FIELD -> {
+                        SmartSingleFieldCard(
+                            item = item,
+                            calcResult = calcResult,
+                            canDelete = uiState.items.size > 2,
+                            listener = cardListener
+                        )
+                    }
+                    CardStylePreset.KEYPAD_PRESETS -> {
+                        KeypadPresetCard(
+                            item = item,
+                            calcResult = calcResult,
+                            canDelete = uiState.items.size > 2,
+                            listener = cardListener
+                        )
+                    }
+                }
             }
         }
 
-        // 2. Диалог сохранения в историю
+        // Диалоги и шторки вынесены в отдельные виджеты
         if (uiState.isSaveDialogOpen) {
-            AlertDialog(
-                onDismissRequest = { viewModel.dismissSaveDialog() },
-                title = { Text("Сохранить сравнение") },
-                text = {
-                    Column {
-                        Text(
-                            text = "Задайте понятное название для поиска в истории:",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        OutlinedTextField(
-                            value = uiState.saveDialogTitleInput,
-                            onValueChange = { viewModel.onSaveDialogTitleChanged(it) },
-                            label = { Text("Название") },
-                            placeholder = { Text("например, Молоко в Магните") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                },
-                confirmButton = {
-                    Button(onClick = { viewModel.confirmSaveComparison() }) {
-                        Text("Сохранить")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { viewModel.dismissSaveDialog() }) {
-                        Text("Отмена")
-                    }
-                }
+            SaveComparisonDialog(
+                titleInput = uiState.saveDialogTitleInput,
+                onTitleChange = { viewModel.onSaveDialogTitleChanged(it) },
+                onConfirm = { viewModel.confirmSaveComparison() },
+                onDismiss = { viewModel.dismissSaveDialog() }
             )
         }
 
-        // 3. Шторка истории расчётов (Room)
-        if (uiState.isHistorySheetOpen) {
-            // ВСТАВЬТЕ СЮДА: история подгружается только когда пользователь реально открыл шторку
-            val historyList by viewModel.history.collectAsState()
-
-            ModalBottomSheet(
-                onDismissRequest = { viewModel.setHistorySheetVisible(false) }
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 32.dp)
-                ) {
-                    Text(
-                        text = "История расчетов",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-
-                    if (historyList.isEmpty()) {
-                        Text(
-                            text = "История пока пуста",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 24.dp)
-                        )
-                    } else {
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            items(historyList, key = { it.id }) { record ->
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                    )
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(12.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = record.title,
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                            Text(
-                                                text = "${record.bestProductName}: ${record.bestUnitPriceFormatted}",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                            Text(
-                                                text = record.savingsInfo,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.secondary
-                                            )
-                                        }
-                                        IconButton(onClick = { viewModel.deleteHistoryItem(record.id) }) {
-                                            Icon(
-                                                imageVector = AppIcons.Default.Delete,
-                                                contentDescription = "Удалить запись",
-                                                tint = MaterialTheme.colorScheme.error
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        if (uiState.isSettingsDialogOpen) {
+            SettingsPresetDialog(
+                currentStyle = uiState.cardStyle,
+                onStyleSelected = { viewModel.setCardStyle(it) },
+                onDismiss = { viewModel.dismissSettingsDialog() }
+            )
         }
 
+        if (uiState.isHistorySheetOpen) {
+            val historyList by viewModel.history.collectAsState()
+            HistoryBottomSheet(
+                historyList = historyList,
+                onDelete = { viewModel.deleteHistoryItem(it) },
+                onDismiss = { viewModel.setHistorySheetVisible(false) }
+            )
+        }
     }
 }
