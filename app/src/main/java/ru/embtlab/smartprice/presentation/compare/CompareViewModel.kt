@@ -26,6 +26,17 @@ class CompareViewModel(application: Application) : AndroidViewModel(application)
     val history: StateFlow<List<SavedComparison>> = repository.getAllHistory()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val settingsDataStore = ru.embtlab.smartprice.data.local.SettingsDataStore(application)
+
+    init {
+        // Подтягиваем пресет карточки из сохраненных настроек
+        viewModelScope.launch {
+            settingsDataStore.settingsFlow.collect { settings ->
+                _uiState.update { it.copy(cardStyle = settings.cardPreset) }
+            }
+        }
+    }
+
     fun onPriceChanged(productId: String, newPrice: String) {
         updateProduct(productId) { it.copy(priceInput = newPrice) }
     }

@@ -21,7 +21,10 @@ import ru.embtlab.smartprice.presentation.theme.icons.*
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
-fun CompareScreen(viewModel: CompareViewModel = viewModel()) {
+fun CompareScreen(
+    onOpenSettings: () -> Unit = {},
+    viewModel: CompareViewModel = viewModel()
+) {
     val uiState by viewModel.uiState.collectAsState()
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
 
@@ -90,8 +93,8 @@ fun CompareScreen(viewModel: CompareViewModel = viewModel()) {
                             Icon(imageVector = AppIcons.Default.Refresh, contentDescription = "Сброс")
                         }
                     }
-                    IconButton(onClick = { viewModel.openSettingsDialog() }) {
-                        Icon(imageVector = AppIcons.Default.Tune, contentDescription = "Вид карточек")
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(imageVector = AppIcons.Default.Tune, contentDescription = "Настройки")
                     }
                 }
             )
