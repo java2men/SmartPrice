@@ -16,7 +16,6 @@ data class CompareUiState(
     val results: List<CalculatedItem> = emptyList(),
     val hasIncompatibleUnits: Boolean = false,
     val cardStyle: CardStylePreset = CardStylePreset.CLASSIC, // <-- Текущий пресет
-    val isSettingsDialogOpen: Boolean = false,                // Диалог выбора стиля
     val isHistorySheetOpen: Boolean = false,
     val scanningProductId: String? = null,
     val isSaveDialogOpen: Boolean = false,

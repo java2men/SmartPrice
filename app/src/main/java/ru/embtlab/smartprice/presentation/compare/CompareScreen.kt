@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
@@ -23,7 +24,7 @@ import ru.embtlab.smartprice.presentation.theme.icons.*
 @Composable
 fun CompareScreen(
     onOpenSettings: () -> Unit = {},
-    viewModel: CompareViewModel = viewModel()
+    viewModel: CompareViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
@@ -169,14 +170,6 @@ fun CompareScreen(
                 onTitleChange = { viewModel.onSaveDialogTitleChanged(it) },
                 onConfirm = { viewModel.confirmSaveComparison() },
                 onDismiss = { viewModel.dismissSaveDialog() }
-            )
-        }
-
-        if (uiState.isSettingsDialogOpen) {
-            SettingsPresetDialog(
-                currentStyle = uiState.cardStyle,
-                onStyleSelected = { viewModel.setCardStyle(it) },
-                onDismiss = { viewModel.dismissSettingsDialog() }
             )
         }
 

@@ -4,39 +4,30 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import ru.embtlab.smartprice.data.local.SettingsDataStore
-import ru.embtlab.smartprice.domain.model.AppSettings
+import dagger.hilt.android.AndroidEntryPoint
 import ru.embtlab.smartprice.domain.model.AppThemeMode
 import ru.embtlab.smartprice.presentation.compare.CompareScreen
+import ru.embtlab.smartprice.presentation.main.MainViewModel
 import ru.embtlab.smartprice.presentation.settings.SettingsScreen
 import ru.embtlab.smartprice.presentation.theme.SmartPriceTheme
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    private val mainViewModel: MainViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val settingsDataStore = SettingsDataStore(this)
-
-
         setContent {
-
-            val settings by settingsDataStore.settingsFlow.collectAsState(initial = AppSettings())
+            val settings by mainViewModel.settings.collectAsState()
 
             val isDarkTheme = when (settings.themeMode) {
                 AppThemeMode.SYSTEM -> isSystemInDarkTheme()

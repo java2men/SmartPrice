@@ -1,8 +1,8 @@
 package ru.embtlab.smartprice.presentation.settings
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -11,10 +11,12 @@ import ru.embtlab.smartprice.data.local.SettingsDataStore
 import ru.embtlab.smartprice.domain.model.AppSettings
 import ru.embtlab.smartprice.domain.model.AppThemeMode
 import ru.embtlab.smartprice.domain.model.CardStylePreset
+import javax.inject.Inject
 
-class SettingsViewModel(application: Application) : AndroidViewModel(application) {
-
-    private val dataStore = SettingsDataStore(application)
+@HiltViewModel
+class SettingsViewModel @Inject constructor(
+    private val dataStore: SettingsDataStore
+) : ViewModel() {
 
     val settings: StateFlow<AppSettings> = dataStore.settingsFlow.stateIn(
         scope = viewModelScope,
