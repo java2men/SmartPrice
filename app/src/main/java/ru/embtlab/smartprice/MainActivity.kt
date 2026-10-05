@@ -26,6 +26,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        window.decorView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
 
         setContent {
             val settings by mainViewModel.settings.collectAsState()

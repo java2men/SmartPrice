@@ -1,15 +1,10 @@
 package ru.embtlab.smartprice.presentation.compare
 
 import android.Manifest
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
+import androidx.compose.animation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -28,7 +23,7 @@ import ru.embtlab.smartprice.presentation.compare.components.*
 import ru.embtlab.smartprice.presentation.compare.components.dialogs.*
 import ru.embtlab.smartprice.presentation.theme.icons.*
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun CompareScreen(
     onOpenSettings: () -> Unit = {},
@@ -36,10 +31,19 @@ fun CompareScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
-
-    // Состояния для показа SnackBar
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+
+    val isKeyboardOpen = WindowInsets.isImeVisible
+    var focusedCardId by remember { mutableStateOf<String?>(null) }
+
+    // Расчет индекса с учетом плашки несовместимости единиц
+    val focusedIndex = remember(focusedCardId, uiState.items, uiState.hasIncompatibleUnits) {
+        val targetId = focusedCardId ?: return@remember null
+        val rawIndex = uiState.items.indexOfFirst { it.id == targetId }
+        if (rawIndex == -1) null else (if (uiState.hasIncompatibleUnits) rawIndex + 1 else rawIndex)
+    }
 
     if (uiState.scanningProductId != null) {
         if (cameraPermissionState.status.isGranted) {
@@ -55,10 +59,12 @@ fun CompareScreen(
         } else {
             AlertDialog(
                 onDismissRequest = { viewModel.stopScanning() },
-                title = { Text("Нужен доступ к камере") },
-                text = { Text("Камера необходима для быстрого распознавания ценников.") },
+                title = { Text("Разрешение на камеру") },
+                text = { Text("Для сканирования ценников приложению нужен доступ к камере.") },
                 confirmButton = {
-                    Button(onClick = { cameraPermissionState.launchPermissionRequest() }) { Text("Разрешить") }
+                    Button(onClick = { cameraPermissionState.launchPermissionRequest() }) {
+                        Text("Предоставить")
+                    }
                 },
                 dismissButton = {
                     TextButton(onClick = { viewModel.stopScanning() }) { Text("Отмена") }
@@ -82,10 +88,14 @@ fun CompareScreen(
             override fun onCustomDiscountChange(id: String, percent: String) = viewModel.onCustomDiscountChanged(id, percent)
             override fun onScanClick(id: String) = viewModel.startScanning(id)
             override fun onDelete(id: String) = viewModel.onTrashClick(id)
+            override fun onCardFocused(id: String) {
+                focusedCardId = id
+            }
         }
     }
 
     Scaffold(
+        modifier = Modifier.fillMaxSize(),
         snackbarHost = {
             SnackbarHost(
                 hostState = snackbarHostState,
@@ -109,7 +119,6 @@ fun CompareScreen(
                         IconButton(onClick = {
                             viewModel.resetWithBackup()
                             coroutineScope.launch {
-                                // Снимаем предыдущий снэкбар, если он еще отображался
                                 snackbarHostState.currentSnackbarData?.dismiss()
                                 val result = snackbarHostState.showSnackbar(
                                     message = "Все товары очищены",
@@ -131,75 +140,85 @@ fun CompareScreen(
             )
         },
         floatingActionButton = {
-            BadgedBox(
-                badge = {
-                    Badge(
-                        containerColor = if (uiState.canAddMore) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.error
-                        },
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    ) {
-                        AnimatedContent(
-                            targetState = uiState.items.size,
-                            transitionSpec = {
-                                if (targetState > initialState) {
-                                    (slideInVertically { height -> height } + fadeIn()).togetherWith(
-                                        slideOutVertically { height -> -height } + fadeOut()
-                                    )
-                                } else {
-                                    (slideInVertically { height -> -height } + fadeIn()).togetherWith(
-                                        slideOutVertically { height -> height } + fadeOut()
-                                    )
-                                }
-                            },
-                            label = "ItemsCountAnimation"
-                        ) { count ->
-                            Text(
-                                text = "$count",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(horizontal = 4.dp),
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
-                    }
-                }
+            AnimatedVisibility(
+                visible = !isKeyboardOpen,
+                enter = fadeIn() + scaleIn(),
+                exit = fadeOut() + scaleOut()
             ) {
-                FloatingActionButton(
-                    onClick = {
-                        if (uiState.canAddMore) {
-                            viewModel.addProduct()
+                BadgedBox(
+                    badge = {
+                        Badge(
+                            containerColor = if (uiState.canAddMore) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ) {
+                            AnimatedContent(
+                                targetState = uiState.items.size,
+                                transitionSpec = {
+                                    if (targetState > initialState) {
+                                        (slideInVertically { height -> height } + fadeIn()).togetherWith(
+                                            slideOutVertically { height -> -height } + fadeOut()
+                                        )
+                                    } else {
+                                        (slideInVertically { height -> -height } + fadeIn()).togetherWith(
+                                            slideOutVertically { height -> height } + fadeOut()
+                                        )
+                                    }
+                                },
+                                label = "ItemsCountAnimation"
+                            ) { count ->
+                                Text(
+                                    text = "$count",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(horizontal = 4.dp),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
-                    },
-                    containerColor = if (uiState.canAddMore) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceVariant
-                    },
-                    contentColor = if (uiState.canAddMore) {
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
                     }
                 ) {
-                    Icon(
-                        imageVector = AppIcons.Default.Add,
-                        contentDescription = if (uiState.canAddMore) "Добавить товар" else "Достигнут лимит товаров"
-                    )
+                    FloatingActionButton(
+                        onClick = {
+                            if (uiState.canAddMore) {
+                                viewModel.addProduct()
+                                coroutineScope.launch {
+                                    listState.animateScrollToItem(uiState.items.size)
+                                }
+                            }
+                        },
+                        containerColor = if (uiState.canAddMore) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                        contentColor = if (uiState.canAddMore) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                        }
+                    ) {
+                        Icon(
+                            imageVector = AppIcons.Default.Add,
+                            contentDescription = if (uiState.canAddMore) "Добавить товар" else "Достигнут лимит"
+                        )
+                    }
                 }
             }
         }
     ) { innerPadding ->
-        LazyColumn(
+        AutoScrollCompareList(
+            state = listState,
+            focusedIndex = focusedIndex,
+            onScrollFinished = { focusedCardId = null },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(top = 16.dp, bottom = 88.dp)
+                .padding(horizontal = 16.dp)
         ) {
             if (uiState.hasIncompatibleUnits) {
                 item {

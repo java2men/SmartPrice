@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
@@ -52,10 +53,11 @@ fun ProductCard(
             else MaterialTheme.colorScheme.surface
         )
     ) {
-        Column(modifier = Modifier
-            .padding(16.dp)
-            .fillMaxWidth()) {
-
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth()
+        ) {
             val isFilled = item.priceInput.isNotBlank() ||
                     item.quantityInput.isNotBlank() ||
                     item.customDiscountPercentInput.isNotBlank() ||
@@ -68,9 +70,10 @@ fun ProductCard(
                 isFilled = isFilled,
                 listener = listener
             )
+
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Сплит-блок
+            // Сплит-блок ввода цены и количества
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -84,7 +87,7 @@ fun ProductCard(
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Цена
+                // Поле цены
                 Box(
                     modifier = Modifier
                         .weight(1.1f)
@@ -94,7 +97,7 @@ fun ProductCard(
                 ) {
                     if (item.priceInput.isEmpty()) {
                         Text(
-                            "Цена",
+                            text = "Цена",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
@@ -123,12 +126,20 @@ fun ProductCard(
                                 keyboardType = KeyboardType.Decimal,
                                 imeAction = ImeAction.Next
                             ),
-                            keyboardActions = KeyboardActions(onNext = { quantityFocusRequester.requestFocus() }),
-                            modifier = Modifier.weight(1f)
+                            keyboardActions = KeyboardActions(
+                                onNext = { quantityFocusRequester.requestFocus() }
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .onFocusChanged { focusState ->
+                                    if (focusState.isFocused) {
+                                        listener.onCardFocused(item.id)
+                                    }
+                                }
                         )
                         if (item.priceInput.isNotEmpty()) {
                             Text(
-                                "₽",
+                                text = "₽",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.outline
@@ -145,7 +156,7 @@ fun ProductCard(
                         .background(MaterialTheme.colorScheme.outlineVariant)
                 )
 
-                // Количество + Единицы
+                // Поле количества + выбор единицы
                 Row(
                     modifier = Modifier
                         .weight(1.3f)
@@ -161,7 +172,7 @@ fun ProductCard(
                     ) {
                         if (item.quantityInput.isEmpty()) {
                             Text(
-                                "Кол-во",
+                                text = "Кол-во",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                             )
@@ -185,15 +196,24 @@ fun ProductCard(
                                 keyboardType = KeyboardType.Decimal,
                                 imeAction = ImeAction.Done
                             ),
-                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                            keyboardActions = KeyboardActions(
+                                onDone = { focusManager.clearFocus() }
+                            ),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .focusRequester(quantityFocusRequester)
+                                .onFocusChanged { focusState ->
+                                    if (focusState.isFocused) {
+                                        listener.onCardFocused(item.id)
+                                    }
+                                }
                         )
                     }
+
                     UnitDropdownMenu(
                         selectedUnit = item.unit,
-                        onUnitSelect = { listener.onUnitChange(item.id, it) })
+                        onUnitSelect = { listener.onUnitChange(item.id, it) }
+                    )
                 }
             }
 
