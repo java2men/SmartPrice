@@ -22,9 +22,9 @@ fun ProductHeader(
     id: String,
     name: String,
     canDelete: Boolean,
-    isFilled: Boolean = false,
     listener: ProductCardListener,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isFilled: Boolean = false,
 ) {
     var showDialog by remember { mutableStateOf(false) }
 
