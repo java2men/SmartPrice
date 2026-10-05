@@ -1,5 +1,7 @@
+// presentation/compare/components/dialogs/HistoryBottomSheet.kt
 package ru.embtlab.smartprice.presentation.compare.components.dialogs
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -9,6 +11,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import ru.embtlab.smartprice.domain.model.SavedComparison
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
 import ru.embtlab.smartprice.presentation.theme.icons.Delete
@@ -17,6 +20,7 @@ import ru.embtlab.smartprice.presentation.theme.icons.Delete
 @Composable
 fun HistoryBottomSheet(
     historyList: List<SavedComparison>,
+    onRestore: (SavedComparison) -> Unit, // <-- Восстановление
     onDelete: (Long) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -31,6 +35,12 @@ fun HistoryBottomSheet(
                 text = "История расчетов",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            Text(
+                text = "Нажмите на запись, чтобы вернуть расчет на экран",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
 
@@ -48,7 +58,9 @@ fun HistoryBottomSheet(
                 ) {
                     items(historyList, key = { it.id }) { record ->
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onRestore(record) },
                             colors = CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                             )
@@ -64,8 +76,10 @@ fun HistoryBottomSheet(
                                     Text(
                                         text = record.title,
                                         style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold
                                     )
+                                    Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = "${record.bestProductName}: ${record.bestUnitPriceFormatted}",
                                         style = MaterialTheme.typography.bodyMedium,
@@ -76,7 +90,15 @@ fun HistoryBottomSheet(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.secondary
                                     )
+                                    if (record.items.isNotEmpty()) {
+                                        Text(
+                                            text = "Позиций: ${record.items.size}",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                    }
                                 }
+
                                 IconButton(onClick = { onDelete(record.id) }) {
                                     Icon(
                                         imageVector = AppIcons.Default.Delete,

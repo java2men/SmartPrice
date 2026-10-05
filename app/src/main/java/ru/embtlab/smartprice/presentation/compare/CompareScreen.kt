@@ -177,6 +177,7 @@ fun CompareScreen(
             val historyList by viewModel.history.collectAsState()
             HistoryBottomSheet(
                 historyList = historyList,
+                onRestore = { record -> viewModel.restoreComparison(record) },
                 onDelete = { viewModel.deleteHistoryItem(it) },
                 onDismiss = { viewModel.setHistorySheetVisible(false) }
             )

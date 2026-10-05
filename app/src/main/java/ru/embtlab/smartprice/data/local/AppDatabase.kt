@@ -4,10 +4,13 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
+import ru.embtlab.smartprice.data.local.converter.ProductListConverter
 import ru.embtlab.smartprice.data.local.dao.ComparisonHistoryDao
 import ru.embtlab.smartprice.data.local.entity.ComparisonHistoryEntity
 
-@Database(entities = [ComparisonHistoryEntity::class], version = 1, exportSchema = false)
+@Database(entities = [ComparisonHistoryEntity::class], version = 2, exportSchema = false)
+@TypeConverters(ProductListConverter::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun historyDao(): ComparisonHistoryDao
 
@@ -21,7 +24,9 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "smart_price_db"
-                ).build()
+                )
+                    .fallbackToDestructiveMigration()
+                    .build()
                 INSTANCE = instance
                 instance
             }

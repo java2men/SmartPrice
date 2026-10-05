@@ -119,7 +119,22 @@ class CompareViewModel @Inject constructor(
         _uiState.update { it.copy(isSaveDialogOpen = false) }
     }
 
+    fun restoreComparison(record: SavedComparison) {
+        if (record.items.isEmpty()) return
+
+        val (results, hasConflict) = calculateComparisonUseCase(record.items)
+        _uiState.update { state ->
+            state.copy(
+                items = record.items,
+                results = results,
+                hasIncompatibleUnits = hasConflict,
+                isHistorySheetOpen = false // Сворачиваем шторку после восстановления
+            )
+        }
+    }
+
     private fun saveCurrentComparison(customTitle: String? = null) {
+        val currentItems = _uiState.value.items
         val best = _uiState.value.results.find { it.isBestChoice } ?: return
         val secondBest = _uiState.value.results.filterNot { it.isBestChoice }.minByOrNull { it.unitPrice }
         val baseUnit = when (best.product.unit.category) {
@@ -140,7 +155,8 @@ class CompareViewModel @Inject constructor(
             title = finalTitle,
             bestProductName = best.product.name.ifBlank { "Товар" },
             bestUnitPriceFormatted = String.format(Locale.US, "%.2f ₽ / %s", best.unitPrice, baseUnit),
-            savingsInfo = savings
+            savingsInfo = savings,
+            items = currentItems // <-- Сохраняем полный снимок всех карточек
         )
 
         viewModelScope.launch {
@@ -163,4 +179,5 @@ class CompareViewModel @Inject constructor(
             state.copy(items = updatedList, results = results, hasIncompatibleUnits = hasConflict)
         }
     }
+
 }
