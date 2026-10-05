@@ -61,7 +61,6 @@ fun CompareScreen(
             uiState.items.any { it.priceInput.isNotBlank() || it.quantityInput.isNotBlank() }
     val canSaveResult = uiState.results.any { it.isBestChoice } && !uiState.hasIncompatibleUnits
 
-    // Стабильный слушатель действий
     val cardListener = remember(viewModel) {
         object : ProductCardListener {
             override fun onNameChange(id: String, name: String) = viewModel.onNameChanged(id, name)
@@ -71,7 +70,7 @@ fun CompareScreen(
             override fun onDiscountTypeChange(id: String, type: DiscountType) = viewModel.onDiscountTypeChanged(id, type)
             override fun onCustomDiscountChange(id: String, percent: String) = viewModel.onCustomDiscountChanged(id, percent)
             override fun onScanClick(id: String) = viewModel.startScanning(id)
-            override fun onDelete(id: String) = viewModel.removeProduct(id)
+            override fun onDelete(id: String) = viewModel.onTrashClick(id)
         }
     }
 

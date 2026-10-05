@@ -24,6 +24,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.embtlab.smartprice.domain.model.CalculatedItem
+import ru.embtlab.smartprice.domain.model.DiscountType
 import ru.embtlab.smartprice.domain.model.ProductItem
 import ru.embtlab.smartprice.presentation.compare.util.InputFormatters
 
@@ -39,7 +40,8 @@ fun ProductCard(
     val quantityFocusRequester = remember { FocusRequester() }
 
     val isBest = calcResult?.isBestChoice == true
-    val borderColor = if (isBest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+    val borderColor =
+        if (isBest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -50,8 +52,22 @@ fun ProductCard(
             else MaterialTheme.colorScheme.surface
         )
     ) {
-        Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
-            ProductHeader(id = item.id, name = item.name, canDelete = canDelete, listener = listener)
+        Column(modifier = Modifier
+            .padding(16.dp)
+            .fillMaxWidth()) {
+
+            val isFilled = item.priceInput.isNotBlank() ||
+                    item.quantityInput.isNotBlank() ||
+                    item.customDiscountPercentInput.isNotBlank() ||
+                    item.discountType != DiscountType.NONE
+
+            ProductHeader(
+                id = item.id,
+                name = item.name,
+                canDelete = canDelete,
+                isFilled = isFilled,
+                listener = listener
+            )
             Spacer(modifier = Modifier.height(10.dp))
 
             // Сплит-блок
@@ -60,17 +76,28 @@ fun ProductCard(
                     .fillMaxWidth()
                     .height(54.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                    .border(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant,
+                        RoundedCornerShape(12.dp)
+                    )
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Цена
                 Box(
-                    modifier = Modifier.weight(1.1f).fillMaxHeight().padding(horizontal = 12.dp),
+                    modifier = Modifier
+                        .weight(1.1f)
+                        .fillMaxHeight()
+                        .padding(horizontal = 12.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     if (item.priceInput.isEmpty()) {
-                        Text("Цена", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                        Text(
+                            "Цена",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -79,44 +106,94 @@ fun ProductCard(
                     ) {
                         BasicTextField(
                             value = item.priceInput,
-                            onValueChange = { listener.onPriceChange(item.id, InputFormatters.sanitizePrice(it, item.priceInput)) },
-                            textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface),
+                            onValueChange = {
+                                listener.onPriceChange(
+                                    item.id,
+                                    InputFormatters.sanitizePrice(it, item.priceInput)
+                                )
+                            },
+                            textStyle = TextStyle(
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Decimal,
+                                imeAction = ImeAction.Next
+                            ),
                             keyboardActions = KeyboardActions(onNext = { quantityFocusRequester.requestFocus() }),
                             modifier = Modifier.weight(1f)
                         )
                         if (item.priceInput.isNotEmpty()) {
-                            Text("₽", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.outline)
+                            Text(
+                                "₽",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.outline
+                            )
                         }
                     }
                 }
 
                 // Разделитель
-                Box(modifier = Modifier.width(1.dp).fillMaxHeight(0.6f).background(MaterialTheme.colorScheme.outlineVariant))
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight(0.6f)
+                        .background(MaterialTheme.colorScheme.outlineVariant)
+                )
 
                 // Количество + Единицы
                 Row(
-                    modifier = Modifier.weight(1.3f).fillMaxHeight().padding(start = 12.dp, end = 6.dp),
+                    modifier = Modifier
+                        .weight(1.3f)
+                        .fillMaxHeight()
+                        .padding(start = 12.dp, end = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
                         if (item.quantityInput.isEmpty()) {
-                            Text("Кол-во", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                            Text(
+                                "Кол-во",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
                         }
                         BasicTextField(
                             value = item.quantityInput,
-                            onValueChange = { listener.onQuantityChange(item.id, InputFormatters.sanitizeQuantity(it, item.quantityInput)) },
-                            textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface),
+                            onValueChange = {
+                                listener.onQuantityChange(
+                                    item.id,
+                                    InputFormatters.sanitizeQuantity(it, item.quantityInput)
+                                )
+                            },
+                            textStyle = TextStyle(
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Decimal,
+                                imeAction = ImeAction.Done
+                            ),
                             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                            modifier = Modifier.fillMaxWidth().focusRequester(quantityFocusRequester)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(quantityFocusRequester)
                         )
                     }
-                    UnitDropdownMenu(selectedUnit = item.unit, onUnitSelect = { listener.onUnitChange(item.id, it) })
+                    UnitDropdownMenu(
+                        selectedUnit = item.unit,
+                        onUnitSelect = { listener.onUnitChange(item.id, it) })
                 }
             }
 

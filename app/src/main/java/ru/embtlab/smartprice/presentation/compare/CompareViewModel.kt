@@ -178,4 +178,29 @@ class CompareViewModel @Inject constructor(
         }
     }
 
+    fun onTrashClick(productId: String) {
+        val item = _uiState.value.items.find { it.id == productId } ?: return
+        val isFilled = item.priceInput.isNotBlank() ||
+                item.quantityInput.isNotBlank() ||
+                item.customDiscountPercentInput.isNotBlank() ||
+                item.discountType != DiscountType.NONE
+
+        if (isFilled) {
+            // Шаг 1: если в карточке есть данные — сбрасываем их
+            updateProduct(productId) {
+                it.copy(
+                    priceInput = "",
+                    quantityInput = "",
+                    customDiscountPercentInput = "",
+                    discountType = DiscountType.NONE
+                )
+            }
+        } else {
+            // Шаг 2: если карточка уже пуста и товаров больше двух — удаляем её
+            if (_uiState.value.items.size > 2) {
+                removeProduct(productId)
+            }
+        }
+    }
+
 }

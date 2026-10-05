@@ -1,3 +1,4 @@
+// presentation/compare/components/ProductCardListener.kt
 package ru.embtlab.smartprice.presentation.compare.components
 
 import androidx.compose.runtime.Immutable

@@ -26,6 +26,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.embtlab.smartprice.domain.model.CalculatedItem
+import ru.embtlab.smartprice.domain.model.DiscountType
 import ru.embtlab.smartprice.domain.model.ProductItem
 import ru.embtlab.smartprice.domain.model.ProductUnit
 import ru.embtlab.smartprice.presentation.compare.util.InputFormatters
@@ -41,12 +42,14 @@ fun KeypadPresetCard(
     val focusManager = LocalFocusManager.current
     val quantityFocusRequester = remember { FocusRequester() }
     val isBest = calcResult?.isBestChoice == true
-    val borderColor = if (isBest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+    val borderColor =
+        if (isBest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
 
     // Популярные фасовки для быстрого тапа
     val weightPresets = listOf("180", "400", "800", "900", "1000")
     val volumePresets = listOf("450", "900", "1000", "1500")
-    val activePresets = if (item.unit == ProductUnit.MILLILITER || item.unit == ProductUnit.LITER) volumePresets else weightPresets
+    val activePresets =
+        if (item.unit == ProductUnit.MILLILITER || item.unit == ProductUnit.LITER) volumePresets else weightPresets
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -57,8 +60,22 @@ fun KeypadPresetCard(
             else MaterialTheme.colorScheme.surface
         )
     ) {
-        Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
-            ProductHeader(id = item.id, name = item.name, canDelete = canDelete, listener = listener)
+        Column(modifier = Modifier
+            .padding(16.dp)
+            .fillMaxWidth()) {
+
+            val isFilled = item.priceInput.isNotBlank() ||
+                    item.quantityInput.isNotBlank() ||
+                    item.customDiscountPercentInput.isNotBlank() ||
+                    item.discountType != DiscountType.NONE
+
+            ProductHeader(
+                id = item.id,
+                name = item.name,
+                canDelete = canDelete,
+                isFilled = isFilled,
+                listener = listener
+            )
             Spacer(modifier = Modifier.height(10.dp))
 
             // Ввод цены и количества
@@ -67,48 +84,107 @@ fun KeypadPresetCard(
                     .fillMaxWidth()
                     .height(54.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                    .border(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant,
+                        RoundedCornerShape(12.dp)
+                    )
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(modifier = Modifier.weight(1.1f).fillMaxHeight().padding(horizontal = 12.dp), contentAlignment = Alignment.CenterStart) {
+                Box(
+                    modifier = Modifier
+                        .weight(1.1f)
+                        .fillMaxHeight()
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
                     if (item.priceInput.isEmpty()) {
-                        Text("Цена", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                        Text(
+                            "Цена",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
                     }
                     BasicTextField(
                         value = item.priceInput,
-                        onValueChange = { listener.onPriceChange(item.id, InputFormatters.sanitizePrice(it, item.priceInput)) },
-                        textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface),
+                        onValueChange = {
+                            listener.onPriceChange(
+                                item.id,
+                                InputFormatters.sanitizePrice(it, item.priceInput)
+                            )
+                        },
+                        textStyle = TextStyle(
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Decimal,
+                            imeAction = ImeAction.Next
+                        ),
                         keyboardActions = KeyboardActions(onNext = { quantityFocusRequester.requestFocus() }),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
 
-                Box(modifier = Modifier.width(1.dp).fillMaxHeight(0.6f).background(MaterialTheme.colorScheme.outlineVariant))
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight(0.6f)
+                        .background(MaterialTheme.colorScheme.outlineVariant)
+                )
 
                 Row(
-                    modifier = Modifier.weight(1.3f).fillMaxHeight().padding(start = 12.dp, end = 6.dp),
+                    modifier = Modifier
+                        .weight(1.3f)
+                        .fillMaxHeight()
+                        .padding(start = 12.dp, end = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.CenterStart) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
                         if (item.quantityInput.isEmpty()) {
-                            Text("Кол-во", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                            Text(
+                                "Кол-во",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
                         }
                         BasicTextField(
                             value = item.quantityInput,
-                            onValueChange = { listener.onQuantityChange(item.id, InputFormatters.sanitizeQuantity(it, item.quantityInput)) },
-                            textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface),
+                            onValueChange = {
+                                listener.onQuantityChange(
+                                    item.id,
+                                    InputFormatters.sanitizeQuantity(it, item.quantityInput)
+                                )
+                            },
+                            textStyle = TextStyle(
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Decimal,
+                                imeAction = ImeAction.Done
+                            ),
                             keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                            modifier = Modifier.fillMaxWidth().focusRequester(quantityFocusRequester)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(quantityFocusRequester)
                         )
                     }
-                    UnitDropdownMenu(selectedUnit = item.unit, onUnitSelect = { listener.onUnitChange(item.id, it) })
+                    UnitDropdownMenu(
+                        selectedUnit = item.unit,
+                        onUnitSelect = { listener.onUnitChange(item.id, it) })
                 }
             }
 
@@ -131,7 +207,12 @@ fun KeypadPresetCard(
                                 listener.onQuantityChange(item.id, "1")
                             }
                         },
-                        label = { Text("$presetVal ${item.unit.label}", style = MaterialTheme.typography.labelSmall) }
+                        label = {
+                            Text(
+                                "$presetVal ${item.unit.label}",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
                     )
                 }
             }

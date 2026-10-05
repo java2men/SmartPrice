@@ -22,6 +22,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.embtlab.smartprice.domain.model.CalculatedItem
+import ru.embtlab.smartprice.domain.model.DiscountType
 import ru.embtlab.smartprice.domain.model.ProductItem
 
 @Composable
@@ -34,7 +35,8 @@ fun SmartSingleFieldCard(
 ) {
     val focusManager = LocalFocusManager.current
     val isBest = calcResult?.isBestChoice == true
-    val borderColor = if (isBest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+    val borderColor =
+        if (isBest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
 
     // Собираем общее отображение
     var rawText by remember(item.priceInput, item.quantityInput) {
@@ -54,8 +56,22 @@ fun SmartSingleFieldCard(
             else MaterialTheme.colorScheme.surface
         )
     ) {
-        Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
-            ProductHeader(id = item.id, name = item.name, canDelete = canDelete, listener = listener)
+        Column(modifier = Modifier
+            .padding(16.dp)
+            .fillMaxWidth()) {
+
+            val isFilled = item.priceInput.isNotBlank() ||
+                    item.quantityInput.isNotBlank() ||
+                    item.customDiscountPercentInput.isNotBlank() ||
+                    item.discountType != DiscountType.NONE
+
+            ProductHeader(
+                id = item.id,
+                name = item.name,
+                canDelete = canDelete,
+                isFilled = isFilled,
+                listener = listener
+            )
             Spacer(modifier = Modifier.height(10.dp))
 
             // Одно широкое поле ввода
@@ -64,7 +80,11 @@ fun SmartSingleFieldCard(
                     .fillMaxWidth()
                     .height(54.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                    .border(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant,
+                        RoundedCornerShape(12.dp)
+                    )
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -106,7 +126,9 @@ fun SmartSingleFieldCard(
                     )
                 }
 
-                UnitDropdownMenu(selectedUnit = item.unit, onUnitSelect = { listener.onUnitChange(item.id, it) })
+                UnitDropdownMenu(
+                    selectedUnit = item.unit,
+                    onUnitSelect = { listener.onUnitChange(item.id, it) })
             }
 
             Spacer(modifier = Modifier.height(10.dp))
