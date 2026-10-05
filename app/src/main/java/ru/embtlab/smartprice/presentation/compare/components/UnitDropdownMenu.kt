@@ -10,6 +10,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.embtlab.smartprice.domain.model.ProductUnit
+import ru.embtlab.smartprice.presentation.compare.components.dialogs.UnitPickerBottomSheet
 
 @Composable
 fun UnitDropdownMenu(
@@ -17,47 +18,38 @@ fun UnitDropdownMenu(
     onUnitSelect: (ProductUnit) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var showSheet by remember { mutableStateOf(false) }
 
-    Box(modifier = modifier) {
-        Surface(
-            onClick = { expanded = true },
-            shape = RoundedCornerShape(8.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
-            modifier = Modifier.height(38.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = selectedUnit.label,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.width(3.dp))
-                Text(
-                    text = "▼",
-                    fontSize = 8.sp,
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
-                )
-            }
-        }
+    if (showSheet) {
+        UnitPickerBottomSheet(
+            selectedUnit = selectedUnit,
+            onUnitSelected = onUnitSelect,
+            onDismiss = { showSheet = false }
+        )
+    }
 
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
+    Surface(
+        onClick = { showSheet = true },
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+        modifier = modifier.height(38.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            ProductUnit.entries.forEach { unit ->
-                DropdownMenuItem(
-                    text = { Text(unit.label) },
-                    onClick = {
-                        onUnitSelect(unit)
-                        expanded = false
-                    }
-                )
-            }
+            Text(
+                text = selectedUnit.label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.width(3.dp))
+            Text(
+                text = "▼",
+                fontSize = 8.sp,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
+            )
         }
     }
 }

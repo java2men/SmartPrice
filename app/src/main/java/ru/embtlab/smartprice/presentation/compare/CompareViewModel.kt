@@ -134,14 +134,12 @@ class CompareViewModel @Inject constructor(
     }
 
     private fun saveCurrentComparison(customTitle: String? = null) {
-        val currentItems = _uiState.value.items
         val best = _uiState.value.results.find { it.isBestChoice } ?: return
         val secondBest = _uiState.value.results.filterNot { it.isBestChoice }.minByOrNull { it.unitPrice }
-        val baseUnit = when (best.product.unit.category) {
-            UnitCategory.WEIGHT -> "кг"
-            UnitCategory.VOLUME -> "л"
-            UnitCategory.PIECES -> "шт"
-        }
+
+        // Берем базовую единицу напрямую из категории единицы измерения:
+        val baseUnit = best.product.unit.category.baseLabel
+
         val savings = if (secondBest != null && secondBest.percentMoreExpensive > 0) {
             String.format(Locale.US, "Выгода %.1f%%", secondBest.percentMoreExpensive)
         } else {
@@ -156,7 +154,7 @@ class CompareViewModel @Inject constructor(
             bestProductName = best.product.name.ifBlank { "Товар" },
             bestUnitPriceFormatted = String.format(Locale.US, "%.2f ₽ / %s", best.unitPrice, baseUnit),
             savingsInfo = savings,
-            items = currentItems // <-- Сохраняем полный снимок всех карточек
+            items = _uiState.value.items
         )
 
         viewModelScope.launch {

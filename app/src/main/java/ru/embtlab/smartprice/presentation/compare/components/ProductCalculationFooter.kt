@@ -22,11 +22,7 @@ fun ProductCalculationFooter(
     if (calcResult == null || calcResult.unitPrice <= 0.0) return
 
     val isBest = calcResult.isBestChoice
-    val baseUnitLabel = when (unit.category) {
-        UnitCategory.WEIGHT -> "кг"
-        UnitCategory.VOLUME -> "л"
-        UnitCategory.PIECES -> "шт"
-    }
+    val baseUnitLabel = unit.category.baseLabel
 
     Column(modifier = modifier.fillMaxWidth()) {
         Spacer(modifier = Modifier.height(10.dp))
