@@ -63,6 +63,8 @@ class CompareViewModel @Inject constructor(
     }
 
     fun addProduct() {
+        if (_uiState.value.items.size >= ComparisonConfig.MAX_PRODUCTS_LIMIT) return
+
         val nextIndex = _uiState.value.items.size + 1
         val newItem = ProductItem(name = "Товар $nextIndex")
         _uiState.update { state ->

@@ -1,13 +1,21 @@
 package ru.embtlab.smartprice.presentation.compare
 
 import android.Manifest
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
@@ -99,14 +107,69 @@ fun CompareScreen(
                 }
             )
         },
+
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { viewModel.addProduct() },
-                containerColor = MaterialTheme.colorScheme.primary
+            BadgedBox(
+                badge = {
+                    Badge(
+                        containerColor = if (uiState.canAddMore) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ) {
+                        AnimatedContent(
+                            targetState = uiState.items.size,
+                            transitionSpec = {
+                                if (targetState > initialState) {
+                                    (slideInVertically { height -> height } + fadeIn()).togetherWith(
+                                        slideOutVertically { height -> -height } + fadeOut()
+                                    )
+                                } else {
+                                    (slideInVertically { height -> -height } + fadeIn()).togetherWith(
+                                        slideOutVertically { height -> height } + fadeOut()
+                                    )
+                                }
+                            },
+                            label = "ItemsCountAnimation"
+                        ) { count ->
+                            Text(
+                                text = "$count",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                }
             ) {
-                Icon(imageVector = AppIcons.Default.Add, contentDescription = "Добавить товар")
+                FloatingActionButton(
+                    onClick = {
+                        if (uiState.canAddMore) {
+                            viewModel.addProduct()
+                        }
+                    },
+                    containerColor = if (uiState.canAddMore) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    },
+                    contentColor = if (uiState.canAddMore) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                    }
+                ) {
+                    Icon(
+                        imageVector = AppIcons.Default.Add,
+                        contentDescription = if (uiState.canAddMore) "Добавить товар" else "Достигнут лимит товаров"
+                    )
+                }
             }
         }
+
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 16.dp),
