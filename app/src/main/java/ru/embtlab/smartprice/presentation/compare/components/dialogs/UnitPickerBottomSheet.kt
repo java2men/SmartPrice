@@ -1,15 +1,34 @@
 package ru.embtlab.smartprice.presentation.compare.components.dialogs
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.embtlab.smartprice.domain.model.ProductUnit
+import ru.embtlab.smartprice.domain.model.UnitCategory
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
 import ru.embtlab.smartprice.presentation.theme.icons.Close
 import ru.embtlab.smartprice.presentation.theme.icons.Search
@@ -36,9 +55,20 @@ fun UnitPickerBottomSheet(
         }
     }
 
-    // Группируем отфильтрованные единицы по категориям
+    // Жестко заданный порядок категорий: Фасовка строго в самом конце
+    val categoryOrder = listOf(
+        UnitCategory.WEIGHT,
+        UnitCategory.VOLUME,
+        UnitCategory.LENGTH,
+        UnitCategory.AREA,
+        UnitCategory.PACKAGING
+    )
+
     val groupedUnits = remember(filteredUnits) {
-        filteredUnits.groupBy { it.category }
+        val groups = filteredUnits.groupBy { it.category }
+        categoryOrder.mapNotNull { category ->
+            groups[category]?.let { units -> category to units }
+        }
     }
 
     ModalBottomSheet(
@@ -49,7 +79,7 @@ fun UnitPickerBottomSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
-                .padding(bottom = 24.dp)
+                .padding(bottom = 28.dp)
         ) {
             Text(
                 text = "Единица измерения",
@@ -58,16 +88,24 @@ fun UnitPickerBottomSheet(
             )
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Поле поиска
+            // Поле поиска с иконками
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 placeholder = { Text("Поиск: рулон, капсулы, чай, мл...") },
-                leadingIcon = { Icon(AppIcons.Default.Search, contentDescription = null) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = AppIcons.Default.Search,
+                        contentDescription = "Поиск"
+                    )
+                },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
                         IconButton(onClick = { searchQuery = "" }) {
-                            Icon(AppIcons.Default.Close, contentDescription = "Очистить")
+                            Icon(
+                                imageVector = AppIcons.Default.Close,
+                                contentDescription = "Очистить"
+                            )
                         }
                     }
                 },
@@ -78,10 +116,9 @@ fun UnitPickerBottomSheet(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Список с категориями и чипсами
             LazyColumn(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 groupedUnits.forEach { (category, units) ->
                     item(key = category.name) {
