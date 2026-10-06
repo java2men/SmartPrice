@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun AutoScrollCompareList(
@@ -51,12 +52,19 @@ fun AutoScrollCompareList(
     LaunchedEffect(focusedIndex, keyboardHeightPx) {
         if (focusedIndex == null || !isKeyboardVisible || viewportHeightPx == 0) return@LaunchedEffect
 
-        delay(120L)
+        delay(100L.milliseconds)
 
-        val targetItem = state.layoutInfo.visibleItemsInfo.find { it.index == focusedIndex }
-        val cardHeightPx = targetItem?.size ?: 0
+        val targetItem = state.layoutInfo.visibleItemsInfo.find { it.index == focusedIndex } ?: return@LaunchedEffect
         val visibleAreaHeight = viewportHeightPx - keyboardHeightPx
 
+        // Если карточка УЖЕ полностью видна над клавиатурой — не дергаем список
+        val isAlreadyVisible = (targetItem.offset + targetItem.size) <= visibleAreaHeight && targetItem.offset >= 0
+        if (isAlreadyVisible) {
+            onScrollFinished()
+            return@LaunchedEffect
+        }
+
+        val cardHeightPx = targetItem.size
         val targetScrollOffset = if (cardHeightPx in 1..<visibleAreaHeight) {
             -(visibleAreaHeight - cardHeightPx - bottomMarginPx)
         } else {
