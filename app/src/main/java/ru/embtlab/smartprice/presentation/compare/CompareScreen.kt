@@ -2,12 +2,15 @@ package ru.embtlab.smartprice.presentation.compare
 
 import android.Manifest
 import androidx.compose.animation.*
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -34,11 +37,20 @@ fun CompareScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val focusManager = LocalFocusManager.current
 
     val isKeyboardOpen = WindowInsets.isImeVisible
     var focusedCardId by remember { mutableStateOf<String?>(null) }
 
-    // Расчет индекса с учетом плашки несовместимости единиц
+    // Сброс фокуса и каретки при закрытии клавиатуры
+    LaunchedEffect(isKeyboardOpen) {
+        if (!isKeyboardOpen) {
+            focusManager.clearFocus()
+            focusedCardId = null
+        }
+    }
+
+    // Расчет индекса с учетом плашки несовместимости категорий
     val focusedIndex = remember(focusedCardId, uiState.items, uiState.hasIncompatibleUnits) {
         val targetId = focusedCardId ?: return@remember null
         val rawIndex = uiState.items.indexOfFirst { it.id == targetId }
@@ -95,7 +107,14 @@ fun CompareScreen(
     }
 
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            // Тап по свободному фону снимает фокус с текстового поля
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = {
+                    focusManager.clearFocus()
+                })
+            },
         snackbarHost = {
             SnackbarHost(
                 hostState = snackbarHostState,
@@ -214,7 +233,7 @@ fun CompareScreen(
         AutoScrollCompareList(
             state = listState,
             focusedIndex = focusedIndex,
-            onScrollFinished = { focusedCardId = null },
+            onScrollFinished = { /* фокус остается у поля, пока пользователь вводит данные */ },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)

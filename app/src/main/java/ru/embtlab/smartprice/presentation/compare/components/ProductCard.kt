@@ -63,6 +63,7 @@ fun ProductCard(
                     item.customDiscountPercentInput.isNotBlank() ||
                     item.discountType != DiscountType.NONE
 
+            // 1. Верхняя панель карточки
             ProductHeader(
                 id = item.id,
                 name = item.name,
@@ -73,7 +74,7 @@ fun ProductCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Сплит-блок ввода цены и количества
+            // 2. Сплит-блок ввода цены и количества
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -87,7 +88,7 @@ fun ProductCard(
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Поле цены
+                // Поле ввода цены
                 Box(
                     modifier = Modifier
                         .weight(1.1f)
@@ -148,7 +149,7 @@ fun ProductCard(
                     }
                 }
 
-                // Разделитель
+                // Разделитель полей
                 Box(
                     modifier = Modifier
                         .width(1.dp)
@@ -156,7 +157,7 @@ fun ProductCard(
                         .background(MaterialTheme.colorScheme.outlineVariant)
                 )
 
-                // Поле количества + выбор единицы
+                // Поле ввода количества + дропдаун единицы
                 Row(
                     modifier = Modifier
                         .weight(1.3f)
@@ -218,7 +219,11 @@ fun ProductCard(
             }
 
             Spacer(modifier = Modifier.height(10.dp))
+
+            // 3. Блок акций и скидок
             DiscountSelectorRow(item = item, listener = listener)
+
+            // 4. Подвал расчетных данных
             ProductCalculationFooter(unit = item.unit, calcResult = calcResult)
         }
     }
