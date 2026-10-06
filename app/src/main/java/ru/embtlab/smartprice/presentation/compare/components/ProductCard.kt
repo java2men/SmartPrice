@@ -1,4 +1,3 @@
-// presentation/compare/components/ProductCard.kt
 package ru.embtlab.smartprice.presentation.compare.components
 
 import android.app.Activity
@@ -18,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -50,7 +48,9 @@ fun ProductCard(
     val keyboardController = LocalSoftwareKeyboardController.current
     val currentView = LocalView.current
 
-    // Фокус-ловушка для безопасного снятия фокуса без передачи соседним полям
+    // Фокусы для цепочки: Имя -> Цена -> Кол-во
+    val priceFocusRequester = remember { FocusRequester() }
+    val quantityFocusRequester = remember { FocusRequester() }
     val dummyFocusRequester = remember { FocusRequester() }
 
     val isBest = calcResult?.isBestChoice == true
@@ -59,14 +59,10 @@ fun ProductCard(
 
     var hasActiveFocusInCard by remember { mutableStateOf(false) }
 
-    // Метод жесткого гашения ввода
     val dismissKeyboardAndLockFocus = {
         hasActiveFocusInCard = false
-        // 1. Переводим фокус на пустую ловушку (не даёт перейти к другим TextField)
         dummyFocusRequester.requestFocus()
-        // 2. Снимаем фокус с окна
         focusManager.clearFocus(force = true)
-        // 3. Закрываем виртуальную клавиатуру
         keyboardController?.hide()
         val imm = currentView.context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
         imm?.hideSoftInputFromWindow(currentView.windowToken, 0)
@@ -91,7 +87,7 @@ fun ProductCard(
                 .padding(16.dp)
                 .fillMaxWidth()
         ) {
-            // Невидимая ловушка фокуса с нулевым размером
+            // Ловушка фокуса против перескока
             Box(
                 modifier = Modifier
                     .size(0.dp)
@@ -99,21 +95,31 @@ fun ProductCard(
                     .focusable()
             )
 
-            val isFilled = item.priceInput.isNotBlank() ||
+            val isFilled = item.name.isNotBlank() ||
+                    item.priceInput.isNotBlank() ||
                     item.quantityInput.isNotBlank() ||
                     item.customDiscountPercentInput.isNotBlank() ||
                     item.discountType != DiscountType.NONE
 
+            // 1. НАЗВАНИЕ ТОВАРА (инлайн ввод)
             ProductHeader(
                 id = item.id,
                 name = item.name,
                 canDelete = canDelete,
                 listener = listener,
-                isFilled = isFilled
+                isFilled = isFilled,
+                priceFocusRequester = priceFocusRequester,
+                onFocused = {
+                    if (!hasActiveFocusInCard) {
+                        hasActiveFocusInCard = true
+                        listener.onCardFocused(item.id)
+                    }
+                }
             )
 
             Spacer(modifier = Modifier.height(10.dp))
 
+            // 2. СПЛИТ ЦЕНА / КОЛИЧЕСТВО
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -168,11 +174,12 @@ fun ProductCard(
                             ),
                             keyboardActions = KeyboardActions(
                                 onNext = {
-                                    focusManager.moveFocus(FocusDirection.Next)
+                                    quantityFocusRequester.requestFocus()
                                 }
                             ),
                             modifier = Modifier
                                 .weight(1f)
+                                .focusRequester(priceFocusRequester)
                                 .onFocusChanged { focusState ->
                                     if (focusState.isFocused) {
                                         if (!hasActiveFocusInCard) {
@@ -243,14 +250,13 @@ fun ProductCard(
                             ),
                             keyboardActions = KeyboardActions(
                                 onDone = {
-                                    // Гарантированно гасим фокус в ловушку
                                     dismissKeyboardAndLockFocus()
                                 }
                             ),
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .focusRequester(quantityFocusRequester)
                                 .focusProperties {
-                                    // Полностью блокируем переход фокуса вперед и вниз
                                     next = dummyFocusRequester
                                     down = dummyFocusRequester
                                     onExit = { FocusRequester.Cancel }
