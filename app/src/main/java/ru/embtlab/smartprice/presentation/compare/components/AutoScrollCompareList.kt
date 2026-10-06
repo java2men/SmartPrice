@@ -52,7 +52,7 @@ fun AutoScrollCompareList(
     LaunchedEffect(focusedIndex, keyboardHeightPx) {
         if (focusedIndex == null || !isKeyboardVisible || viewportHeightPx == 0) return@LaunchedEffect
 
-        delay(100L.milliseconds)
+        delay(300L.milliseconds)
 
         val targetItem = state.layoutInfo.visibleItemsInfo.find { it.index == focusedIndex } ?: return@LaunchedEffect
         val visibleAreaHeight = viewportHeightPx - keyboardHeightPx

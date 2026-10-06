@@ -1,3 +1,4 @@
+// presentation/compare/components/DiscountSelectorRow.kt
 package ru.embtlab.smartprice.presentation.compare.components
 
 import androidx.compose.foundation.layout.*
@@ -7,7 +8,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -21,10 +25,12 @@ import ru.embtlab.smartprice.presentation.theme.icons.Close
 fun DiscountSelectorRow(
     item: ProductItem,
     listener: ProductCardListener,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    discountFocusRequester: FocusRequester? = null,
+    dummyFocusRequester: FocusRequester? = null,
+    onFocused: () -> Unit = {},
+    onDoneAction: () -> Unit = {}
 ) {
-    val focusManager = LocalFocusManager.current
-
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -54,13 +60,13 @@ fun DiscountSelectorRow(
                     listener.onCustomDiscountChange(item.id, sanitized)
                 },
                 label = { Text("Размер скидки (%)") },
-                placeholder = { Text("например, 20") },
+                placeholder = { Text("Например, 20") },
                 trailingIcon = {
                     if (item.customDiscountPercentInput.isNotEmpty()) {
                         IconButton(onClick = { listener.onCustomDiscountChange(item.id, "") }) {
                             Icon(
                                 imageVector = AppIcons.Default.Close,
-                                contentDescription = "Стереть",
+                                contentDescription = "Очистить скидку",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(16.dp)
                             )
@@ -69,11 +75,28 @@ fun DiscountSelectorRow(
                 },
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Decimal,
-                    imeAction = ImeAction.Done
+                    imeAction = ImeAction.Done // Всегда закрывает цепочку
                 ),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                keyboardActions = KeyboardActions(
+                    onDone = { onDoneAction() }
+                ),
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (discountFocusRequester != null) Modifier.focusRequester(discountFocusRequester) else Modifier)
+                    .focusProperties {
+                        // Запрещаем переход дальше на другие карточки
+                        dummyFocusRequester?.let {
+                            next = it
+                            down = it
+                        }
+                        onExit = { FocusRequester.Cancel }
+                    }
+                    .onFocusChanged { focusState ->
+                        if (focusState.isFocused) {
+                            onFocused()
+                        }
+                    }
             )
         }
     }
