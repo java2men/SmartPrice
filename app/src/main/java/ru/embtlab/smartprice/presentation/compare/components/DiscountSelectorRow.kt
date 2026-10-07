@@ -46,7 +46,8 @@ fun DiscountSelectorRow(
                 FilterChip(
                     selected = item.discountType == type,
                     onClick = { listener.onDiscountTypeChange(item.id, type) },
-                    label = { Text(type.label, style = MaterialTheme.typography.labelSmall) }
+                    label = { Text(type.label, style = MaterialTheme.typography.labelSmall) },
+                    modifier = Modifier.focusProperties { canFocus = false },
                 )
             }
         }
