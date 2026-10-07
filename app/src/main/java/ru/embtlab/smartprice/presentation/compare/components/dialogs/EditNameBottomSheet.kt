@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
+import ru.embtlab.smartprice.domain.model.ProductConstants
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
 import ru.embtlab.smartprice.presentation.theme.icons.Close
 
@@ -57,18 +58,7 @@ fun EditNameBottomSheet(
     val verticalScrollState = rememberScrollState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    val allCatalogPresets = remember {
-        listOf(
-            "Молоко", "Сливочное масло", "Сыр", "Сметана", "Творог", "Йогурт", "Кефир", "Сливки", "Сгущенка",
-            "Яйца", "Хлеб", "Макароны", "Рис", "Гречка", "Овсянка", "Мука", "Сахар", "Соль", "Подсолнечное масло", "Оливковое масло",
-            "Курица", "Фарш", "Говядина", "Свинина", "Индейка", "Сосиски", "Колбаса", "Рыба", "Креветки",
-            "Кофе", "Чай", "Шоколад", "Печенье", "Конфеты", "Сок", "Вода", "Газировка", "Мороженое",
-            "Яблоки", "Бананы", "Картофель", "Помидоры", "Огурцы", "Лук", "Морковь", "Орехи",
-            "Пельмени", "Вареники", "Пицца", "Чипсы", "Снеки",
-            "Стиральный порошок", "Гель для стирки", "Кондиционер для белья", "Таблетки для ПММ",
-            "Средство для посуды", "Мыло", "Шампунь", "Зубная паста", "Туалетная бумага", "Бумажные полотенца", "Влажные салфетки", "Мусорные пакеты"
-        )
-    }
+    val allCatalogPresets = ProductConstants.CATALOG_PRODUCT_PRESETS
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -94,12 +84,13 @@ fun EditNameBottomSheet(
 
             OutlinedTextField(
                 value = tempName,
-                onValueChange = { if (it.length <= 40) tempName = it },
-                placeholder = { Text("Например: Масло 82.5%") },
+                onValueChange = {
+                    if (it.length <= ProductConstants.MAX_PRODUCT_NAME_LENGTH) tempName = it
+                },
                 supportingText = {
-                    if (tempName.length > 25) {
+                    if (tempName.length > ProductConstants.SHOW_COUNTER_NAME_LENGTH_THRESHOLD) {
                         Text(
-                            text = "${tempName.length}/40",
+                            text = "${tempName.length}/${ProductConstants.MAX_PRODUCT_NAME_LENGTH}",
                             style = MaterialTheme.typography.labelSmall
                         )
                     }

@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.embtlab.smartprice.domain.model.CalculatedItem
 import ru.embtlab.smartprice.domain.model.DiscountType
+import ru.embtlab.smartprice.domain.model.ProductConstants
 import ru.embtlab.smartprice.domain.model.ProductItem
 import ru.embtlab.smartprice.domain.model.ProductUnit
 import ru.embtlab.smartprice.presentation.compare.util.InputFormatters
@@ -63,8 +64,8 @@ fun KeypadPresetCard(
     val borderColor =
         if (isBest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
 
-    val weightPresets = listOf("180", "400", "800", "900", "1000")
-    val volumePresets = listOf("450", "900", "1000", "1500")
+    val weightPresets = ProductConstants.WEIGHT_PRESETS
+    val volumePresets = ProductConstants.VOLUME_PRESETS
     val activePresets =
         if (item.unit == ProductUnit.MILLILITER || item.unit == ProductUnit.LITER) volumePresets else weightPresets
 

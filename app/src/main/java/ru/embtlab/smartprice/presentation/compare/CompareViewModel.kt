@@ -36,6 +36,8 @@ class CompareViewModel @Inject constructor(
 
     private var lastBackupState: List<ProductItem>? = null
 
+    private var nextProductNumber = ProductConstants.INITIAL_NEXT_PRODUCT_INDEX
+
     init {
         viewModelScope.launch {
             settingsDataStore.settingsFlow.collect { settings ->
@@ -92,7 +94,7 @@ class CompareViewModel @Inject constructor(
     }
 
     fun removeProduct(productId: String) {
-        if (_uiState.value.items.size <= 2) return
+        if (_uiState.value.items.size <= ProductConstants.MIN_PRODUCTS_COUNT) return
         _uiState.update { state ->
             val updatedList = state.items.filterNot { it.id == productId }
             val (results, hasConflict) = calculateComparisonUseCase(updatedList)
@@ -203,9 +205,7 @@ class CompareViewModel @Inject constructor(
                 item.quantityInput.isNotBlank() ||
                 item.customDiscountPercentInput.isNotBlank() ||
                 item.discountType != DiscountType.NONE
-
         if (isFilled) {
-            // Шаг 1: если в карточке есть данные — сбрасываем их
             updateProduct(productId) {
                 it.copy(
                     priceInput = "",
@@ -215,18 +215,15 @@ class CompareViewModel @Inject constructor(
                 )
             }
         } else {
-            // Шаг 2: если карточка уже пуста и товаров больше двух — удаляем её
-            if (_uiState.value.items.size > 2) {
+            if (_uiState.value.items.size > ProductConstants.MIN_PRODUCTS_COUNT) {
                 removeProduct(productId)
             }
         }
     }
 
     fun resetWithBackup() {
-        // Сохраняем снимок текущих карточек перед очисткой
         lastBackupState = _uiState.value.items
-
-        // Сбрасываем к исходному состоянию из 2 пустых товаров
+        nextProductNumber = ProductConstants.INITIAL_NEXT_PRODUCT_INDEX
         _uiState.update { state ->
             CompareUiState(
                 cardStyle = state.cardStyle,

@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.map
 import ru.embtlab.smartprice.domain.model.AppSettings
 import ru.embtlab.smartprice.domain.model.AppThemeMode
 import ru.embtlab.smartprice.domain.model.CardStylePreset
+import ru.embtlab.smartprice.domain.model.ProductConstants
 
 private val Context.dataStore by preferencesDataStore(name = "smart_price_settings")
 
@@ -47,11 +48,8 @@ class SettingsDataStore(private val context: Context) {
         context.dataStore.edit { preferences ->
             val raw = preferences[Keys.RECENT_PRODUCT_NAMES] ?: ""
             val currentList = if (raw.isBlank()) emptyList() else raw.split("||").filter { it.isNotBlank() }
-
-            // Ставим новое/выбранное название первым, убирая дубликаты
             val updated = (listOf(clean) + currentList.filterNot { it.equals(clean, ignoreCase = true) })
-                .take(12)
-
+                .take(ProductConstants.MAX_RECENT_PRODUCTS_COUNT)
             preferences[Keys.RECENT_PRODUCT_NAMES] = updated.joinToString("||")
         }
     }
