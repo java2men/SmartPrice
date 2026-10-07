@@ -1,20 +1,30 @@
-// presentation/compare/components/ProductCard.kt
 package ru.embtlab.smartprice.presentation.compare.components
 
-import android.app.Activity
-import android.content.Context
-import android.view.inputmethod.InputMethodManager
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -23,6 +33,11 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
@@ -36,6 +51,7 @@ import ru.embtlab.smartprice.domain.model.CalculatedItem
 import ru.embtlab.smartprice.domain.model.DiscountType
 import ru.embtlab.smartprice.domain.model.ProductItem
 import ru.embtlab.smartprice.presentation.compare.util.InputFormatters
+import ru.embtlab.smartprice.presentation.compare.util.KeyboardHelper
 
 @Composable
 fun ProductCard(
@@ -55,21 +71,15 @@ fun ProductCard(
     val dummyFocusRequester = remember { FocusRequester() }
 
     val isDiscountOpen = item.discountType == DiscountType.PERCENT
-
     val isBest = calcResult?.isBestChoice == true
     val borderColor =
         if (isBest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
 
-    var hasActiveFocusInCard by remember { mutableStateOf(false) }
-
-    val dismissKeyboardAndLockFocus = {
-        hasActiveFocusInCard = false
+    val dismissKeyboardAndFocus = {
         dummyFocusRequester.requestFocus()
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
-        val imm = currentView.context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-        imm?.hideSoftInputFromWindow(currentView.windowToken, 0)
-        (currentView.context as? Activity)?.currentFocus?.clearFocus()
+        KeyboardHelper.forceClose(currentView)
     }
 
     Card(
@@ -90,7 +100,7 @@ fun ProductCard(
                 .padding(16.dp)
                 .fillMaxWidth()
         ) {
-            // Ловушка фокуса
+            // Невидимая нода-ловушка фокуса: активируется ТОЛЬКО при закрытии ввода по Done
             Box(
                 modifier = Modifier
                     .size(0.dp)
@@ -104,7 +114,6 @@ fun ProductCard(
                     item.customDiscountPercentInput.isNotBlank() ||
                     item.discountType != DiscountType.NONE
 
-            // 1. ИМЯ ТОВАРА
             ProductHeader(
                 id = item.id,
                 name = item.name,
@@ -113,16 +122,12 @@ fun ProductCard(
                 isFilled = isFilled,
                 priceFocusRequester = priceFocusRequester,
                 onFocused = {
-                    if (!hasActiveFocusInCard) {
-                        hasActiveFocusInCard = true
-                        listener.onCardFocused(item.id)
-                    }
+                    listener.onCardFocused(item.id)
                 }
             )
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // 2. ЦЕНА И КОЛИЧЕСТВО
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -153,8 +158,7 @@ fun ProductCard(
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         BasicTextField(
                             value = item.priceInput,
@@ -176,19 +180,14 @@ fun ProductCard(
                                 imeAction = ImeAction.Next
                             ),
                             keyboardActions = KeyboardActions(
-                                onNext = {
-                                    quantityFocusRequester.requestFocus()
-                                }
+                                onNext = { quantityFocusRequester.requestFocus() }
                             ),
                             modifier = Modifier
                                 .weight(1f)
                                 .focusRequester(priceFocusRequester)
                                 .onFocusChanged { focusState ->
                                     if (focusState.isFocused) {
-                                        if (!hasActiveFocusInCard) {
-                                            hasActiveFocusInCard = true
-                                            listener.onCardFocused(item.id)
-                                        }
+                                        listener.onCardFocused(item.id)
                                     }
                                 }
                         )
@@ -203,7 +202,6 @@ fun ProductCard(
                     }
                 }
 
-                // Разделитель
                 Box(
                     modifier = Modifier
                         .width(1.dp)
@@ -247,7 +245,6 @@ fun ProductCard(
                             ),
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             singleLine = true,
-                            // Если процент раскрыт — переходим дальше, иначе завершаем ввод
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Decimal,
                                 imeAction = if (isDiscountOpen) ImeAction.Next else ImeAction.Done
@@ -256,10 +253,12 @@ fun ProductCard(
                                 onNext = {
                                     if (isDiscountOpen) {
                                         discountFocusRequester.requestFocus()
+                                    } else {
+                                        dismissKeyboardAndFocus()
                                     }
                                 },
                                 onDone = {
-                                    dismissKeyboardAndLockFocus()
+                                    dismissKeyboardAndFocus()
                                 }
                             ),
                             modifier = Modifier
@@ -274,13 +273,20 @@ fun ProductCard(
                                 }
                                 .onFocusChanged { focusState ->
                                     if (focusState.isFocused) {
-                                        if (!hasActiveFocusInCard) {
-                                            hasActiveFocusInCard = true
-                                            listener.onCardFocused(item.id)
-                                        }
-                                    } else if (!isDiscountOpen) {
-                                        hasActiveFocusInCard = false
+                                        listener.onCardFocused(item.id)
                                     }
+                                }
+                                .onKeyEvent { keyEvent ->
+                                    if (keyEvent.type == KeyEventType.KeyUp &&
+                                        (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter ||
+                                                keyEvent.nativeKeyEvent.keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER)
+                                    ) {
+                                        if (!isDiscountOpen) {
+                                            dismissKeyboardAndFocus()
+                                            return@onKeyEvent true
+                                        }
+                                    }
+                                    false
                                 }
                         )
                     }
@@ -294,24 +300,19 @@ fun ProductCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // 3. БЛОК СКИДКИ
             DiscountSelectorRow(
                 item = item,
                 listener = listener,
                 discountFocusRequester = discountFocusRequester,
                 dummyFocusRequester = dummyFocusRequester,
                 onFocused = {
-                    if (!hasActiveFocusInCard) {
-                        hasActiveFocusInCard = true
-                        listener.onCardFocused(item.id)
-                    }
+                    listener.onCardFocused(item.id)
                 },
                 onDoneAction = {
-                    dismissKeyboardAndLockFocus()
+                    dismissKeyboardAndFocus()
                 }
             )
 
-            // 4. ИТОГИ
             ProductCalculationFooter(unit = item.unit, calcResult = calcResult)
         }
     }

@@ -1,15 +1,54 @@
 package ru.embtlab.smartprice.presentation.compare
 
 import android.Manifest
-import androidx.compose.animation.*
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.*
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -22,11 +61,24 @@ import kotlinx.coroutines.launch
 import ru.embtlab.smartprice.domain.model.CardStylePreset
 import ru.embtlab.smartprice.domain.model.DiscountType
 import ru.embtlab.smartprice.domain.model.ProductUnit
-import ru.embtlab.smartprice.presentation.compare.components.*
-import ru.embtlab.smartprice.presentation.compare.components.dialogs.*
-import ru.embtlab.smartprice.presentation.theme.icons.*
+import ru.embtlab.smartprice.presentation.compare.components.AutoScrollCompareList
+import ru.embtlab.smartprice.presentation.compare.components.CameraOcrScanner
+import ru.embtlab.smartprice.presentation.compare.components.KeypadPresetCard
+import ru.embtlab.smartprice.presentation.compare.components.ProductCard
+import ru.embtlab.smartprice.presentation.compare.components.ProductCardListener
+import ru.embtlab.smartprice.presentation.compare.components.SmartSingleFieldCard
+import ru.embtlab.smartprice.presentation.compare.components.dialogs.HistoryBottomSheet
+import ru.embtlab.smartprice.presentation.compare.components.dialogs.SaveComparisonDialog
+import ru.embtlab.smartprice.presentation.theme.icons.Add
+import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
+import ru.embtlab.smartprice.presentation.theme.icons.BookmarkAdd
+import ru.embtlab.smartprice.presentation.theme.icons.History
+import ru.embtlab.smartprice.presentation.theme.icons.Refresh
+import ru.embtlab.smartprice.presentation.theme.icons.Tune
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class,
+    ExperimentalLayoutApi::class
+)
 @Composable
 fun CompareScreen(
     onOpenSettings: () -> Unit = {},
@@ -37,20 +89,25 @@ fun CompareScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+
     val focusManager = LocalFocusManager.current
-
     val isKeyboardOpen = WindowInsets.isImeVisible
-    var focusedCardId by remember { mutableStateOf<String?>(null) }
 
-    // Сброс фокуса и каретки при закрытии клавиатуры
+    var focusedCardId by remember { mutableStateOf<String?>(null) }
+    var focusTrigger by remember { mutableLongStateOf(0L) }
+
+    // Сброс фокуса только когда клавиатура была открыта и пользователь закрыл её системным свайпом/жестом назад
+    var wasKeyboardOpen by remember { mutableStateOf(false) }
     LaunchedEffect(isKeyboardOpen) {
-        if (!isKeyboardOpen) {
+        if (isKeyboardOpen) {
+            wasKeyboardOpen = true
+        } else if (wasKeyboardOpen) {
+            wasKeyboardOpen = false
             focusManager.clearFocus()
             focusedCardId = null
         }
     }
 
-    // Расчет индекса с учетом плашки несовместимости категорий
     val focusedIndex = remember(focusedCardId, uiState.items, uiState.hasIncompatibleUnits) {
         val targetId = focusedCardId ?: return@remember null
         val rawIndex = uiState.items.indexOfFirst { it.id == targetId }
@@ -71,8 +128,8 @@ fun CompareScreen(
         } else {
             AlertDialog(
                 onDismissRequest = { viewModel.stopScanning() },
-                title = { Text("Разрешение на камеру") },
-                text = { Text("Для сканирования ценников приложению нужен доступ к камере.") },
+                title = { Text("Требуется доступ к камере") },
+                text = { Text("Камера необходима для быстрого распознавания ценников.") },
                 confirmButton = {
                     Button(onClick = { cameraPermissionState.launchPermissionRequest() }) {
                         Text("Предоставить")
@@ -102,19 +159,13 @@ fun CompareScreen(
             override fun onDelete(id: String) = viewModel.onTrashClick(id)
             override fun onCardFocused(id: String) {
                 focusedCardId = id
+                focusTrigger = System.currentTimeMillis()
             }
         }
     }
 
     Scaffold(
-        modifier = Modifier
-            .fillMaxSize()
-            // Тап по свободному фону снимает фокус с текстового поля
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = {
-                    focusManager.clearFocus()
-                })
-            },
+        modifier = Modifier.fillMaxSize(),
         snackbarHost = {
             SnackbarHost(
                 hostState = snackbarHostState,
@@ -233,7 +284,8 @@ fun CompareScreen(
         AutoScrollCompareList(
             state = listState,
             focusedIndex = focusedIndex,
-            onScrollFinished = { /* фокус остается у поля, пока пользователь вводит данные */ },
+            scrollTrigger = focusTrigger,
+            onScrollFinished = { /* no-op */ },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)

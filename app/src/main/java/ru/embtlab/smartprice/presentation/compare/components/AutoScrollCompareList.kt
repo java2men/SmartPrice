@@ -31,45 +31,42 @@ fun AutoScrollCompareList(
     modifier: Modifier = Modifier,
     state: LazyListState = rememberLazyListState(),
     focusedIndex: Int?,
+    scrollTrigger: Long = 0L,
     onScrollFinished: () -> Unit = {},
     verticalArrangement: Arrangement.Vertical = Arrangement.spacedBy(12.dp),
     content: LazyListScope.() -> Unit
 ) {
     val density = LocalDensity.current
-
-    // Получаем инсеты клавиатуры в composable-контексте
     val imeInsets = WindowInsets.ime
     val imeBottomPadding = imeInsets.asPaddingValues().calculateBottomPadding()
 
     var viewportHeightPx by remember { mutableIntStateOf(0) }
     val bottomMarginPx = with(density) { 16.dp.roundToPx() }
 
-    // Реактивное отслеживание анимации клавиатуры без delay(...)
-    LaunchedEffect(focusedIndex) {
+    // Следим за появлением клавиатуры и фокусом, без задержек delay()
+    LaunchedEffect(focusedIndex, scrollTrigger) {
         if (focusedIndex == null) return@LaunchedEffect
 
-        // Слушаем изменение высоты инсета IME покадрово во время системной анимации
         snapshotFlow { imeInsets.getBottom(density) }
-            .filter { it > 0 } // Пропускаем состояние, пока клавиатура закрыта
-            .distinctUntilChanged() // Реагируем на каждый шаг изменения высоты
+            .filter { it > 0 }
+            .distinctUntilChanged()
             .collectLatest { currentKeyboardHeightPx ->
                 if (viewportHeightPx == 0) return@collectLatest
 
-                // Находим текущие габариты сфокусированной карточки
+                // Находим текущий элемент
                 var targetItem = state.layoutInfo.visibleItemsInfo.find { it.index == focusedIndex }
-
-                // Если элемент находится вне видимой зоны, подтягиваем его в лейаут без паузы
                 if (targetItem == null) {
                     state.scrollToItem(focusedIndex)
                     targetItem = state.layoutInfo.visibleItemsInfo.find { it.index == focusedIndex }
                 }
 
-                val cardHeightPx = targetItem?.size ?: with(density) { 220.dp.roundToPx() }
+                if (targetItem == null) return@collectLatest
+
+                val cardHeightPx = targetItem.size
                 val visibleAreaHeight = viewportHeightPx - currentKeyboardHeightPx
 
-                // Двусторонний расчет оффсета:
-                // Прижимает нижний срез карточки максимально близко к верхнему срезу клавиатуры
-                val targetScrollOffset = if (cardHeightPx in 1..<visibleAreaHeight) {
+                // Если карточка помещается целиком над клавиатурой, опускаем/поднимаем её к нижнему краю видимой зоны
+                val targetOffset = if (cardHeightPx in 1..<visibleAreaHeight) {
                     -(visibleAreaHeight - cardHeightPx - bottomMarginPx)
                 } else {
                     0
@@ -77,7 +74,7 @@ fun AutoScrollCompareList(
 
                 state.animateScrollToItem(
                     index = focusedIndex,
-                    scrollOffset = targetScrollOffset.coerceAtLeast(0)
+                    scrollOffset = targetOffset.coerceAtLeast(0)
                 )
                 onScrollFinished()
             }
@@ -90,7 +87,6 @@ fun AutoScrollCompareList(
             .onGloballyPositioned { coordinates ->
                 viewportHeightPx = coordinates.size.height
             },
-        // Динамический запас для скролла в самый конец списка без обрезания футера карточки
         contentPadding = PaddingValues(
             top = 16.dp,
             bottom = max(32.dp, imeBottomPadding + 80.dp)
