@@ -1,27 +1,32 @@
 package ru.embtlab.smartprice.presentation.compare.components
 
 import android.view.ViewGroup
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
+import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -44,6 +49,8 @@ fun CameraOcrScanner(
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
 
     var latestParsed by remember { mutableStateOf<ParsedPriceTag?>(null) }
+    var cameraInstance by remember { mutableStateOf<Camera?>(null) }
+    var isFlashOn by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -53,7 +60,9 @@ fun CameraOcrScanner(
     }
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
-        // Камера видоискателя
+        var previewViewRef by remember { mutableStateOf<PreviewView?>(null) }
+
+        // 1. Полноэкранный видоискатель
         AndroidView(
             factory = { ctx ->
                 val previewView = PreviewView(ctx).apply {
@@ -62,6 +71,7 @@ fun CameraOcrScanner(
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
                 }
+                previewViewRef = previewView
 
                 val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
                 cameraProviderFuture.addListener({
@@ -84,7 +94,8 @@ fun CameraOcrScanner(
                                     )
                                     recognizer.process(image)
                                         .addOnSuccessListener { visionText ->
-                                            val parsed = parser(visionText.text)
+                                            // Используем интеллектуальный парсер с анализом размера и положения блоков
+                                            val parsed = parser.parseFromVisionText(visionText)
                                             if (parsed.price != null || parsed.quantity != null) {
                                                 latestParsed = parsed
                                             }
@@ -100,7 +111,7 @@ fun CameraOcrScanner(
 
                     try {
                         cameraProvider.unbindAll()
-                        cameraProvider.bindToLifecycle(
+                        cameraInstance = cameraProvider.bindToLifecycle(
                             lifecycleOwner,
                             CameraSelector.DEFAULT_BACK_CAMERA,
                             preview,
@@ -113,24 +124,71 @@ fun CameraOcrScanner(
 
                 previewView
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    // Тап по экрану для ручного фокуса в точку ценника
+                    detectTapGestures { offset ->
+                        val view = previewViewRef ?: return@detectTapGestures
+                        val factory = view.meteringPointFactory
+                        val point = factory.createPoint(offset.x, offset.y)
+                        val action = FocusMeteringAction.Builder(point).build()
+                        cameraInstance?.cameraControl?.startFocusAndMetering(action)
+                    }
+                }
         )
 
-        // Рамка прицеливания на ценник
+        // 2. Рамка прицеливания на ценник
         Box(
             modifier = Modifier
-                .size(width = 280.dp, height = 180.dp)
+                .size(width = 300.dp, height = 180.dp)
                 .align(Alignment.Center)
-                .border(2.dp, Color.White.copy(alpha = 0.8f), RoundedCornerShape(12.dp))
+                .border(2.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
         )
 
-        // Нижняя панель с предпросмотром распознанных данных и кнопкой подтверждения
+        // 3. Верхняя панель: кнопка закрытия и фонарик
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilledTonalIconButton(
+                onClick = onClose,
+                shape = CircleShape,
+                colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = Color.Black.copy(alpha = 0.5f))
+            ) {
+                Text("✕", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+
+            // Переключатель фонарика
+            FilledTonalIconButton(
+                onClick = {
+                    isFlashOn = !isFlashOn
+                    cameraInstance?.cameraControl?.enableTorch(isFlashOn)
+                },
+                shape = CircleShape,
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = if (isFlashOn) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.5f)
+                )
+            ) {
+                Text(
+                    text = if (isFlashOn) "💡 Вкл" else "💡",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
+
+        // 4. Нижняя панель с предпросмотром распознанных данных
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(Color.Black.copy(alpha = 0.75f))
-                .navigationBarsPadding() // <-- Поднимает содержимое над системными кнопками Android
+                .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -138,7 +196,7 @@ fun CameraOcrScanner(
             val qtyStr = latestParsed?.quantity?.let { "$it ${latestParsed?.unit?.label ?: ""}" } ?: "—"
 
             Text(
-                text = "Наведите на ценник",
+                text = "Наведите рамку на ценник (тапните для фокуса)",
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.LightGray
             )
@@ -175,6 +233,5 @@ fun CameraOcrScanner(
                 }
             }
         }
-
     }
 }
