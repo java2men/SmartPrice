@@ -1,4 +1,3 @@
-// presentation/compare/components/AutoScrollCompareList.kt
 package ru.embtlab.smartprice.presentation.compare.components
 
 import androidx.compose.foundation.layout.Arrangement
@@ -16,15 +15,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 
 @Composable
 fun AutoScrollCompareList(
@@ -36,49 +36,51 @@ fun AutoScrollCompareList(
     content: LazyListScope.() -> Unit
 ) {
     val density = LocalDensity.current
-    val coroutineScope = rememberCoroutineScope()
 
-    // Высота клавиатуры в dp и px
-    val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
-    val keyboardHeightPx = WindowInsets.ime.getBottom(density)
-    val isKeyboardVisible = keyboardHeightPx > 0
+    // Получаем инсеты клавиатуры в composable-контексте
+    val imeInsets = WindowInsets.ime
+    val imeBottomPadding = imeInsets.asPaddingValues().calculateBottomPadding()
 
     var viewportHeightPx by remember { mutableIntStateOf(0) }
     val bottomMarginPx = with(density) { 16.dp.roundToPx() }
 
-    LaunchedEffect(focusedIndex, keyboardHeightPx) {
-        if (focusedIndex == null || !isKeyboardVisible || viewportHeightPx == 0) return@LaunchedEffect
+    // Реактивное отслеживание анимации клавиатуры без delay(...)
+    LaunchedEffect(focusedIndex) {
+        if (focusedIndex == null) return@LaunchedEffect
 
-        // 1. Ожидаем завершения выезда клавиатуры (для Funtouch / OriginOS нужно около 180-200мс)
-        delay(180L)
+        // Слушаем изменение высоты инсета IME покадрово во время системной анимации
+        snapshotFlow { imeInsets.getBottom(density) }
+            .filter { it > 0 } // Пропускаем состояние, пока клавиатура закрыта
+            .distinctUntilChanged() // Реагируем на каждый шаг изменения высоты
+            .collectLatest { currentKeyboardHeightPx ->
+                if (viewportHeightPx == 0) return@collectLatest
 
-        // 2. Ожидаем, пока элемент гарантированно появится в лейауте
-        var targetItem = state.layoutInfo.visibleItemsInfo.find { it.index == focusedIndex }
-        var retries = 0
-        while (targetItem == null && retries < 3) {
-            state.scrollToItem(focusedIndex)
-            delay(50L)
-            targetItem = state.layoutInfo.visibleItemsInfo.find { it.index == focusedIndex }
-            retries++
-        }
+                // Находим текущие габариты сфокусированной карточки
+                var targetItem = state.layoutInfo.visibleItemsInfo.find { it.index == focusedIndex }
 
-        val cardHeightPx = targetItem?.size ?: with(density) { 220.dp.roundToPx() }
-        val visibleAreaHeight = viewportHeightPx - keyboardHeightPx
+                // Если элемент находится вне видимой зоны, подтягиваем его в лейаут без паузы
+                if (targetItem == null) {
+                    state.scrollToItem(focusedIndex)
+                    targetItem = state.layoutInfo.visibleItemsInfo.find { it.index == focusedIndex }
+                }
 
-        // 3. Расчет точного смещения
-        val targetScrollOffset = if (cardHeightPx in 1..<visibleAreaHeight) {
-            -(visibleAreaHeight - cardHeightPx - bottomMarginPx)
-        } else {
-            0
-        }
+                val cardHeightPx = targetItem?.size ?: with(density) { 220.dp.roundToPx() }
+                val visibleAreaHeight = viewportHeightPx - currentKeyboardHeightPx
 
-        coroutineScope.launch {
-            state.animateScrollToItem(
-                index = focusedIndex,
-                scrollOffset = targetScrollOffset.coerceAtLeast(0)
-            )
-            onScrollFinished()
-        }
+                // Двусторонний расчет оффсета:
+                // Прижимает нижний срез карточки максимально близко к верхнему срезу клавиатуры
+                val targetScrollOffset = if (cardHeightPx in 1..<visibleAreaHeight) {
+                    -(visibleAreaHeight - cardHeightPx - bottomMarginPx)
+                } else {
+                    0
+                }
+
+                state.animateScrollToItem(
+                    index = focusedIndex,
+                    scrollOffset = targetScrollOffset.coerceAtLeast(0)
+                )
+                onScrollFinished()
+            }
     }
 
     LazyColumn(
@@ -88,9 +90,7 @@ fun AutoScrollCompareList(
             .onGloballyPositioned { coordinates ->
                 viewportHeightPx = coordinates.size.height
             },
-        // КЛЮЧЕВОЙ МОМЕНТ:
-        // Добавляем к нижней границе не только высоту клавиатуры, но и дополнительный зазор,
-        // чтобы последней карточке всегда было физическое место проскроллиться наверх
+        // Динамический запас для скролла в самый конец списка без обрезания футера карточки
         contentPadding = PaddingValues(
             top = 16.dp,
             bottom = max(32.dp, imeBottomPadding + 80.dp)
