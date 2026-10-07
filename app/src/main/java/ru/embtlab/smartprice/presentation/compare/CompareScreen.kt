@@ -65,7 +65,6 @@ import ru.embtlab.smartprice.domain.model.ProductUnit
 import ru.embtlab.smartprice.presentation.compare.components.AutoScrollCompareList
 import ru.embtlab.smartprice.presentation.compare.components.CameraOcrScanner
 import ru.embtlab.smartprice.presentation.compare.components.CompactProductSummaryCard
-import ru.embtlab.smartprice.presentation.compare.components.KeypadPresetCard
 import ru.embtlab.smartprice.presentation.compare.components.ProductCard
 import ru.embtlab.smartprice.presentation.compare.components.ProductCardListener
 import ru.embtlab.smartprice.presentation.compare.components.SmartSingleFieldCard
@@ -328,16 +327,6 @@ fun CompareScreen(
                     }
                     CardStylePreset.SMART_SINGLE_FIELD -> {
                         SmartSingleFieldCard(
-                            item = item,
-                            calcResult = calcResult,
-                            canDelete = uiState.items.size > 2,
-                            listener = cardListener,
-                            recentNames = recentNames,
-                            onDeleteRecentName = { viewModel.removeRecentName(it) },
-                        )
-                    }
-                    CardStylePreset.KEYPAD_PRESETS -> {
-                        KeypadPresetCard(
                             item = item,
                             calcResult = calcResult,
                             canDelete = uiState.items.size > 2,

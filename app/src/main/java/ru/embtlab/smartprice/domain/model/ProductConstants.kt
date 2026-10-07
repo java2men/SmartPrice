@@ -17,10 +17,6 @@ object ProductConstants {
     const val MAX_QUANTITY_DECIMAL_DIGITS = 3
     const val MAX_DISCOUNT_PERCENT = 99.9
 
-    // Пресеты для карточки с быстрыми объемами (KeypadPresetCard)
-    val WEIGHT_PRESETS = listOf("180", "400", "800", "900", "1000")
-    val VOLUME_PRESETS = listOf("450", "900", "1000", "1500")
-
     // Единый базовый каталог товаров для шторки и экрана редактирования
     val CATALOG_PRODUCT_PRESETS = listOf(
         // Молочный отдел
