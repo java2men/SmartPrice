@@ -1,4 +1,3 @@
-// presentation/compare/components/SmartSingleFieldCard.kt
 package ru.embtlab.smartprice.presentation.compare.components
 
 import android.view.KeyEvent as AndroidKeyEvent
@@ -23,6 +22,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import ru.embtlab.smartprice.domain.model.CalculatedItem
 import ru.embtlab.smartprice.domain.model.DiscountType
 import ru.embtlab.smartprice.domain.model.ProductItem
+import ru.embtlab.smartprice.presentation.compare.util.InputFormatters
 import ru.embtlab.smartprice.presentation.compare.util.KeyboardHelper
 
 @Composable
@@ -75,7 +76,6 @@ fun SmartSingleFieldCard(
     val borderColor =
         if (isBest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
 
-    // Надежное закрытие клавиатуры и сброс фокуса без прыжка на следующую карточку
     val dismissKeyboardAndFocus = {
         dummyFocusRequester.requestFocus()
         focusManager.clearFocus(force = true)
@@ -83,13 +83,28 @@ fun SmartSingleFieldCard(
         KeyboardHelper.forceClose(currentView)
     }
 
-    // Локальное строковое состояние для единого поля ввода
-    var rawText by remember(item.priceInput, item.quantityInput) {
+    var isFieldFocused by remember { mutableStateOf(false) }
+
+    // Локальное строковое состояние для бесшовного ввода
+    var rawText by remember {
         mutableStateOf(
             if (item.priceInput.isNotEmpty() && item.quantityInput.isNotEmpty())
                 "${item.priceInput} / ${item.quantityInput}"
             else item.priceInput
         )
+    }
+
+    // Синхронизируем строку, только когда поле не в фокусе (например, при сбросе или сканировании ценника)
+    LaunchedEffect(item.priceInput, item.quantityInput, isFieldFocused) {
+        if (!isFieldFocused) {
+            rawText = if (item.priceInput.isNotEmpty() && item.quantityInput.isNotEmpty()) {
+                "${item.priceInput} / ${item.quantityInput}"
+            } else if (item.priceInput.isNotEmpty()) {
+                item.priceInput
+            } else {
+                ""
+            }
+        }
     }
 
     Card(
@@ -110,7 +125,7 @@ fun SmartSingleFieldCard(
                 .padding(16.dp)
                 .fillMaxWidth()
         ) {
-            // Нода-ловушка фокуса
+            // Нода-ловушка фокуса при закрытии ввода
             Box(
                 modifier = Modifier
                     .size(0.dp)
@@ -124,22 +139,18 @@ fun SmartSingleFieldCard(
                     item.customDiscountPercentInput.isNotBlank() ||
                     item.discountType != DiscountType.NONE
 
-            // 1. Заголовок
+            // 1. Заголовок товара с переименованием и чипсами как в классическом пресете
             ProductHeader(
                 id = item.id,
                 name = item.name,
                 canDelete = canDelete,
                 isFilled = isFilled,
-                listener = listener,
-                priceFocusRequester = fieldFocusRequester,
-                onFocused = {
-                    listener.onCardFocused(item.id)
-                }
+                listener = listener
             )
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // 2. Единое поле ввода цены и количества
+            // 2. Строка экспресс-ввода: только цифры, точка, запятая, слэш и пробел
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -160,7 +171,7 @@ fun SmartSingleFieldCard(
                 ) {
                     if (rawText.isEmpty()) {
                         Text(
-                            text = "Цена и вес (напр. 189 850)",
+                            text = "Цена и кол-во (напр. 189 850)",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
@@ -168,14 +179,29 @@ fun SmartSingleFieldCard(
                     BasicTextField(
                         value = rawText,
                         onValueChange = { input ->
-                            rawText = input
-                            // Деление строки по пробелам, слэшам или тире
-                            val tokens = input.trim().split(Regex("""[\s/\\-]+"""))
-                            if (tokens.isNotEmpty()) {
-                                listener.onPriceChange(item.id, tokens[0])
-                            }
-                            if (tokens.size > 1) {
-                                listener.onQuantityChange(item.id, tokens[1])
+                            // 1. Разрешаем строго цифры, разделители (. , / пробел)
+                            val filtered = input.filter { it.isDigit() || it == '.' || it == ',' || it == ' ' || it == '/' }
+                            rawText = filtered
+
+                            // 2. Разбираем строку на токены без затирания при вводе разделителя
+                            val tokens = filtered.split(Regex("""[\s/]+""")).filter { it.isNotEmpty() }
+
+                            if (tokens.isEmpty()) {
+                                listener.onPriceChange(item.id, "")
+                                listener.onQuantityChange(item.id, "")
+                            } else {
+                                // Первая часть — цена
+                                val cleanPrice = InputFormatters.sanitizePrice(tokens[0], item.priceInput)
+                                listener.onPriceChange(item.id, cleanPrice)
+
+                                // Вторая часть — количество
+                                if (tokens.size > 1) {
+                                    val cleanQuantity = InputFormatters.sanitizeQuantity(tokens[1], item.quantityInput)
+                                    listener.onQuantityChange(item.id, cleanQuantity)
+                                } else {
+                                    // Если второго числа еще нет, сбрасываем количество, не стирая цену
+                                    listener.onQuantityChange(item.id, "")
+                                }
                             }
                         },
                         textStyle = TextStyle(
@@ -185,8 +211,9 @@ fun SmartSingleFieldCard(
                         ),
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         singleLine = true,
+                        // KeyboardType.Number / Phone открывает строго цифровую клавиатуру
                         keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Text,
+                            keyboardType = KeyboardType.Phone,
                             imeAction = if (isDiscountOpen) ImeAction.Next else ImeAction.Done
                         ),
                         keyboardActions = KeyboardActions(
@@ -212,6 +239,7 @@ fun SmartSingleFieldCard(
                                 onExit = { FocusRequester.Cancel }
                             }
                             .onFocusChanged { focusState ->
+                                isFieldFocused = focusState.isFocused
                                 if (focusState.isFocused) {
                                     listener.onCardFocused(item.id)
                                 }
