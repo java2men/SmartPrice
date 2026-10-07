@@ -10,4 +10,9 @@ sealed interface Screen {
     data object Settings : Screen {
         override val route = "settings"
     }
+
+    data object EditProduct : Screen {
+        override val route = "product_edit/{productId}"
+        fun createRoute(productId: String): String = "product_edit/$productId"
+    }
 }

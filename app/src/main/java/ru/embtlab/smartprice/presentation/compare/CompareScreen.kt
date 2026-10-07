@@ -64,6 +64,7 @@ import ru.embtlab.smartprice.domain.model.DiscountType
 import ru.embtlab.smartprice.domain.model.ProductUnit
 import ru.embtlab.smartprice.presentation.compare.components.AutoScrollCompareList
 import ru.embtlab.smartprice.presentation.compare.components.CameraOcrScanner
+import ru.embtlab.smartprice.presentation.compare.components.CompactProductSummaryCard
 import ru.embtlab.smartprice.presentation.compare.components.KeypadPresetCard
 import ru.embtlab.smartprice.presentation.compare.components.ProductCard
 import ru.embtlab.smartprice.presentation.compare.components.ProductCardListener
@@ -83,6 +84,7 @@ import ru.embtlab.smartprice.presentation.theme.icons.Tune
 @Composable
 fun CompareScreen(
     onOpenSettings: () -> Unit = {},
+    onEditProduct: (String) -> Unit = {},
     viewModel: CompareViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -342,6 +344,15 @@ fun CompareScreen(
                             listener = cardListener,
                             recentNames = recentNames,
                             onDeleteRecentName = { viewModel.removeRecentName(it) },
+                        )
+                    }
+                    CardStylePreset.FULL_SCREEN_EDITOR -> {
+                        CompactProductSummaryCard(
+                            item = item,
+                            calcResult = calcResult,
+                            canDelete = uiState.items.size > 2,
+                            onCardClick = { onEditProduct(item.id) },
+                            onDeleteClick = { viewModel.onTrashClick(item.id) }
                         )
                     }
                 }
