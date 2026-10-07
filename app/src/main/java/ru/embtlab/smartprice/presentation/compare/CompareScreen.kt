@@ -1,3 +1,4 @@
+// presentation/compare/CompareScreen.kt
 package ru.embtlab.smartprice.presentation.compare
 
 import android.Manifest
@@ -85,6 +86,7 @@ fun CompareScreen(
     viewModel: CompareViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val recentNames by viewModel.recentProductNames.collectAsState()
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -96,7 +98,7 @@ fun CompareScreen(
     var focusedCardId by remember { mutableStateOf<String?>(null) }
     var focusTrigger by remember { mutableLongStateOf(0L) }
 
-    // Сброс фокуса только когда клавиатура была открыта и пользователь закрыл её системным свайпом/жестом назад
+    // Сброс фокуса только при закрытии клавиатуры пользователем жестом/кнопкой назад
     var wasKeyboardOpen by remember { mutableStateOf(false) }
     LaunchedEffect(isKeyboardOpen) {
         if (isKeyboardOpen) {
@@ -108,6 +110,7 @@ fun CompareScreen(
         }
     }
 
+    // Индекс карточки в списке с учетом предупреждающего баннера
     val focusedIndex = remember(focusedCardId, uiState.items, uiState.hasIncompatibleUnits) {
         val targetId = focusedCardId ?: return@remember null
         val rawIndex = uiState.items.indexOfFirst { it.id == targetId }
@@ -316,7 +319,8 @@ fun CompareScreen(
                             item = item,
                             calcResult = calcResult,
                             canDelete = uiState.items.size > 2,
-                            listener = cardListener
+                            listener = cardListener,
+                            recentNames = recentNames
                         )
                     }
                     CardStylePreset.SMART_SINGLE_FIELD -> {
@@ -324,7 +328,8 @@ fun CompareScreen(
                             item = item,
                             calcResult = calcResult,
                             canDelete = uiState.items.size > 2,
-                            listener = cardListener
+                            listener = cardListener,
+                            recentNames = recentNames
                         )
                     }
                     CardStylePreset.KEYPAD_PRESETS -> {
@@ -332,7 +337,8 @@ fun CompareScreen(
                             item = item,
                             calcResult = calcResult,
                             canDelete = uiState.items.size > 2,
-                            listener = cardListener
+                            listener = cardListener,
+                            recentNames = recentNames
                         )
                     }
                 }

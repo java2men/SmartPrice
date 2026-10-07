@@ -61,7 +61,8 @@ fun SmartSingleFieldCard(
     calcResult: CalculatedItem?,
     canDelete: Boolean,
     listener: ProductCardListener,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    recentNames: List<String> = emptyList() // <-- Добавлен параметр
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -85,7 +86,6 @@ fun SmartSingleFieldCard(
 
     var isFieldFocused by remember { mutableStateOf(false) }
 
-    // Локальное строковое состояние для бесшовного ввода
     var rawText by remember {
         mutableStateOf(
             if (item.priceInput.isNotEmpty() && item.quantityInput.isNotEmpty())
@@ -94,7 +94,6 @@ fun SmartSingleFieldCard(
         )
     }
 
-    // Синхронизируем строку, только когда поле не в фокусе (например, при сбросе или сканировании ценника)
     LaunchedEffect(item.priceInput, item.quantityInput, isFieldFocused) {
         if (!isFieldFocused) {
             rawText = if (item.priceInput.isNotEmpty() && item.quantityInput.isNotEmpty()) {
@@ -125,7 +124,6 @@ fun SmartSingleFieldCard(
                 .padding(16.dp)
                 .fillMaxWidth()
         ) {
-            // Нода-ловушка фокуса при закрытии ввода
             Box(
                 modifier = Modifier
                     .size(0.dp)
@@ -139,18 +137,17 @@ fun SmartSingleFieldCard(
                     item.customDiscountPercentInput.isNotBlank() ||
                     item.discountType != DiscountType.NONE
 
-            // 1. Заголовок товара с переименованием и чипсами как в классическом пресете
             ProductHeader(
                 id = item.id,
                 name = item.name,
                 canDelete = canDelete,
                 isFilled = isFilled,
-                listener = listener
+                listener = listener,
+                recentNames = recentNames
             )
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // 2. Строка экспресс-ввода: только цифры, точка, запятая, слэш и пробел
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -171,7 +168,7 @@ fun SmartSingleFieldCard(
                 ) {
                     if (rawText.isEmpty()) {
                         Text(
-                            text = "Цена и кол-во (напр. 189 850)",
+                            text = "Цена и кол-во",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
@@ -179,27 +176,22 @@ fun SmartSingleFieldCard(
                     BasicTextField(
                         value = rawText,
                         onValueChange = { input ->
-                            // 1. Разрешаем строго цифры, разделители (. , / пробел)
                             val filtered = input.filter { it.isDigit() || it == '.' || it == ',' || it == ' ' || it == '/' }
                             rawText = filtered
 
-                            // 2. Разбираем строку на токены без затирания при вводе разделителя
                             val tokens = filtered.split(Regex("""[\s/]+""")).filter { it.isNotEmpty() }
 
                             if (tokens.isEmpty()) {
                                 listener.onPriceChange(item.id, "")
                                 listener.onQuantityChange(item.id, "")
                             } else {
-                                // Первая часть — цена
                                 val cleanPrice = InputFormatters.sanitizePrice(tokens[0], item.priceInput)
                                 listener.onPriceChange(item.id, cleanPrice)
 
-                                // Вторая часть — количество
                                 if (tokens.size > 1) {
                                     val cleanQuantity = InputFormatters.sanitizeQuantity(tokens[1], item.quantityInput)
                                     listener.onQuantityChange(item.id, cleanQuantity)
                                 } else {
-                                    // Если второго числа еще нет, сбрасываем количество, не стирая цену
                                     listener.onQuantityChange(item.id, "")
                                 }
                             }
@@ -211,7 +203,6 @@ fun SmartSingleFieldCard(
                         ),
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         singleLine = true,
-                        // KeyboardType.Number / Phone открывает строго цифровую клавиатуру
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Phone,
                             imeAction = if (isDiscountOpen) ImeAction.Next else ImeAction.Done
@@ -267,7 +258,6 @@ fun SmartSingleFieldCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // 3. Выбор скидки
             DiscountSelectorRow(
                 item = item,
                 listener = listener,
@@ -281,7 +271,6 @@ fun SmartSingleFieldCard(
                 }
             )
 
-            // 4. Футер расчета
             ProductCalculationFooter(unit = item.unit, calcResult = calcResult)
         }
     }

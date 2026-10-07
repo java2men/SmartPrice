@@ -59,7 +59,8 @@ fun ProductCard(
     calcResult: CalculatedItem?,
     canDelete: Boolean,
     listener: ProductCardListener,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    recentNames: List<String> = emptyList() // <-- Добавлен параметр
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -100,7 +101,6 @@ fun ProductCard(
                 .padding(16.dp)
                 .fillMaxWidth()
         ) {
-            // Невидимая нода-ловушка фокуса: активируется ТОЛЬКО при закрытии ввода по Done
             Box(
                 modifier = Modifier
                     .size(0.dp)
@@ -120,10 +120,7 @@ fun ProductCard(
                 canDelete = canDelete,
                 listener = listener,
                 isFilled = isFilled,
-                priceFocusRequester = priceFocusRequester,
-                onFocused = {
-                    listener.onCardFocused(item.id)
-                }
+                recentNames = recentNames
             )
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -141,7 +138,7 @@ fun ProductCard(
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Поле цены
+                // Поле Цены
                 Box(
                     modifier = Modifier
                         .weight(1.1f)
@@ -209,7 +206,7 @@ fun ProductCard(
                         .background(MaterialTheme.colorScheme.outlineVariant)
                 )
 
-                // Поле количества
+                // Поле Количества
                 Row(
                     modifier = Modifier
                         .weight(1.3f)

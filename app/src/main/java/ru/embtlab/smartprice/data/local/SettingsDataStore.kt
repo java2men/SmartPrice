@@ -19,18 +19,50 @@ class SettingsDataStore(private val context: Context) {
         val CARD_PRESET = stringPreferencesKey("card_preset")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+        val RECENT_PRODUCT_NAMES = stringPreferencesKey("recent_product_names")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { preferences ->
         val presetName = preferences[Keys.CARD_PRESET] ?: CardStylePreset.CLASSIC.name
         val themeName = preferences[Keys.THEME_MODE] ?: AppThemeMode.SYSTEM.name
         val dynamicColor = preferences[Keys.DYNAMIC_COLOR] ?: true
-
         AppSettings(
             cardPreset = runCatching { CardStylePreset.valueOf(presetName) }.getOrDefault(CardStylePreset.CLASSIC),
             themeMode = runCatching { AppThemeMode.valueOf(themeName) }.getOrDefault(AppThemeMode.SYSTEM),
             dynamicColor = dynamicColor
         )
+    }
+
+    // Поток недавних названий товаров
+    val recentProductNamesFlow: Flow<List<String>> = context.dataStore.data.map { preferences ->
+        val raw = preferences[Keys.RECENT_PRODUCT_NAMES] ?: ""
+        if (raw.isBlank()) emptyList()
+        else raw.split("||").filter { it.isNotBlank() }
+    }
+
+    // Сохранение названия в начало списка (максимум 12 уникальных записей)
+    suspend fun addRecentProductName(name: String) {
+        val clean = name.trim()
+        if (clean.isBlank()) return
+        context.dataStore.edit { preferences ->
+            val raw = preferences[Keys.RECENT_PRODUCT_NAMES] ?: ""
+            val currentList = if (raw.isBlank()) emptyList() else raw.split("||").filter { it.isNotBlank() }
+
+            // Ставим новое/выбранное название первым, убирая дубликаты
+            val updated = (listOf(clean) + currentList.filterNot { it.equals(clean, ignoreCase = true) })
+                .take(12)
+
+            preferences[Keys.RECENT_PRODUCT_NAMES] = updated.joinToString("||")
+        }
+    }
+
+    suspend fun removeRecentProductName(name: String) {
+        context.dataStore.edit { preferences ->
+            val raw = preferences[Keys.RECENT_PRODUCT_NAMES] ?: ""
+            val currentList = if (raw.isBlank()) emptyList() else raw.split("||").filter { it.isNotBlank() }
+            val updated = currentList.filterNot { it.equals(name, ignoreCase = true) }
+            preferences[Keys.RECENT_PRODUCT_NAMES] = updated.joinToString("||")
+        }
     }
 
     suspend fun setCardPreset(preset: CardStylePreset) {

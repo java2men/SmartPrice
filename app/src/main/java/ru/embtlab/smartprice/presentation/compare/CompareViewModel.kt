@@ -30,6 +30,10 @@ class CompareViewModel @Inject constructor(
     val history: StateFlow<List<SavedComparison>> = getHistoryUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Поток недавних названий товаров для шторки
+    val recentProductNames: StateFlow<List<String>> = settingsDataStore.recentProductNamesFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private var lastBackupState: List<ProductItem>? = null
 
     init {
@@ -62,6 +66,17 @@ class CompareViewModel @Inject constructor(
 
     fun onNameChanged(productId: String, newName: String) {
         updateProduct(productId) { it.copy(name = newName) }
+        if (newName.isNotBlank()) {
+            viewModelScope.launch {
+                settingsDataStore.addRecentProductName(newName)
+            }
+        }
+    }
+
+    fun removeRecentName(name: String) {
+        viewModelScope.launch {
+            settingsDataStore.removeRecentProductName(name)
+        }
     }
 
     fun addProduct() {
