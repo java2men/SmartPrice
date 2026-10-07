@@ -1,4 +1,3 @@
-// main/java/ru/embtlab/smartprice/presentation/compare/components/ProductHeader.kt
 package ru.embtlab.smartprice.presentation.compare.components
 
 import androidx.compose.foundation.clickable
@@ -41,7 +40,8 @@ fun ProductHeader(
     listener: ProductCardListener,
     modifier: Modifier = Modifier,
     isFilled: Boolean = false,
-    recentNames: List<String> = emptyList()
+    recentNames: List<String> = emptyList(),
+    onDeleteRecentName: (String) -> Unit = {} // <-- Добавлен колбэк
 ) {
     var showSheet by remember { mutableStateOf(false) }
 
@@ -53,6 +53,7 @@ fun ProductHeader(
                 listener.onNameChange(id, newName)
                 showSheet = false
             },
+            onDeleteRecent = onDeleteRecentName, // <-- Передаем в шторку
             onDismiss = { showSheet = false }
         )
     }

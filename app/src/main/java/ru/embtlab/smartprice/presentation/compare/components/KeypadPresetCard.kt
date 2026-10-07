@@ -54,7 +54,8 @@ fun KeypadPresetCard(
     canDelete: Boolean,
     listener: ProductCardListener,
     modifier: Modifier = Modifier,
-    recentNames: List<String> = emptyList() // <-- Добавлен параметр
+    recentNames: List<String> = emptyList(),
+    onDeleteRecentName: (String) -> Unit = {}
 ) {
     val focusManager = LocalFocusManager.current
     val quantityFocusRequester = remember { FocusRequester() }
@@ -92,7 +93,8 @@ fun KeypadPresetCard(
                 canDelete = canDelete,
                 isFilled = isFilled,
                 listener = listener,
-                recentNames = recentNames
+                recentNames = recentNames,
+                onDeleteRecentName = onDeleteRecentName
             )
 
             Spacer(modifier = Modifier.height(10.dp))

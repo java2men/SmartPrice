@@ -320,7 +320,8 @@ fun CompareScreen(
                             calcResult = calcResult,
                             canDelete = uiState.items.size > 2,
                             listener = cardListener,
-                            recentNames = recentNames
+                            recentNames = recentNames,
+                            onDeleteRecentName = { viewModel.removeRecentName(it) },
                         )
                     }
                     CardStylePreset.SMART_SINGLE_FIELD -> {
@@ -329,7 +330,8 @@ fun CompareScreen(
                             calcResult = calcResult,
                             canDelete = uiState.items.size > 2,
                             listener = cardListener,
-                            recentNames = recentNames
+                            recentNames = recentNames,
+                            onDeleteRecentName = { viewModel.removeRecentName(it) },
                         )
                     }
                     CardStylePreset.KEYPAD_PRESETS -> {
@@ -338,7 +340,8 @@ fun CompareScreen(
                             calcResult = calcResult,
                             canDelete = uiState.items.size > 2,
                             listener = cardListener,
-                            recentNames = recentNames
+                            recentNames = recentNames,
+                            onDeleteRecentName = { viewModel.removeRecentName(it) },
                         )
                     }
                 }
