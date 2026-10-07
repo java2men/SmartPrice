@@ -1,20 +1,48 @@
+// presentation/compare/components/SmartSingleFieldCard.kt
 package ru.embtlab.smartprice.presentation.compare.components
 
+import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -24,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import ru.embtlab.smartprice.domain.model.CalculatedItem
 import ru.embtlab.smartprice.domain.model.DiscountType
 import ru.embtlab.smartprice.domain.model.ProductItem
+import ru.embtlab.smartprice.presentation.compare.util.KeyboardHelper
 
 @Composable
 fun SmartSingleFieldCard(
@@ -34,11 +63,27 @@ fun SmartSingleFieldCard(
     modifier: Modifier = Modifier
 ) {
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val currentView = LocalView.current
+
+    val fieldFocusRequester = remember { FocusRequester() }
+    val discountFocusRequester = remember { FocusRequester() }
+    val dummyFocusRequester = remember { FocusRequester() }
+
+    val isDiscountOpen = item.discountType == DiscountType.PERCENT
     val isBest = calcResult?.isBestChoice == true
     val borderColor =
         if (isBest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
 
-    // Собираем общее отображение
+    // Надежное закрытие клавиатуры и сброс фокуса без прыжка на следующую карточку
+    val dismissKeyboardAndFocus = {
+        dummyFocusRequester.requestFocus()
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+        KeyboardHelper.forceClose(currentView)
+    }
+
+    // Локальное строковое состояние для единого поля ввода
     var rawText by remember(item.priceInput, item.quantityInput) {
         mutableStateOf(
             if (item.priceInput.isNotEmpty() && item.quantityInput.isNotEmpty())
@@ -48,7 +93,11 @@ fun SmartSingleFieldCard(
     }
 
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .focusProperties {
+                onExit = { FocusRequester.Cancel }
+            },
         shape = MaterialTheme.shapes.medium,
         border = BorderStroke(if (isBest) 2.dp else 1.dp, borderColor),
         colors = CardDefaults.cardColors(
@@ -56,25 +105,41 @@ fun SmartSingleFieldCard(
             else MaterialTheme.colorScheme.surface
         )
     ) {
-        Column(modifier = Modifier
-            .padding(16.dp)
-            .fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth()
+        ) {
+            // Нода-ловушка фокуса
+            Box(
+                modifier = Modifier
+                    .size(0.dp)
+                    .focusRequester(dummyFocusRequester)
+                    .focusable()
+            )
 
-            val isFilled = item.priceInput.isNotBlank() ||
+            val isFilled = item.name.isNotBlank() ||
+                    item.priceInput.isNotBlank() ||
                     item.quantityInput.isNotBlank() ||
                     item.customDiscountPercentInput.isNotBlank() ||
                     item.discountType != DiscountType.NONE
 
+            // 1. Заголовок
             ProductHeader(
                 id = item.id,
                 name = item.name,
                 canDelete = canDelete,
                 isFilled = isFilled,
-                listener = listener
+                listener = listener,
+                priceFocusRequester = fieldFocusRequester,
+                onFocused = {
+                    listener.onCardFocused(item.id)
+                }
             )
+
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Одно широкое поле ввода
+            // 2. Единое поле ввода цены и количества
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -89,10 +154,13 @@ fun SmartSingleFieldCard(
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.CenterStart
+                ) {
                     if (rawText.isEmpty()) {
                         Text(
-                            text = "Цена / Вес (напр. 189 850)",
+                            text = "Цена и вес (напр. 189 850)",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
@@ -101,7 +169,7 @@ fun SmartSingleFieldCard(
                         value = rawText,
                         onValueChange = { input ->
                             rawText = input
-                            // Парсим разделители: пробел, слэш, дефис
+                            // Деление строки по пробелам, слэшам или тире
                             val tokens = input.trim().split(Regex("""[\s/\\-]+"""))
                             if (tokens.isNotEmpty()) {
                                 listener.onPriceChange(item.id, tokens[0])
@@ -119,20 +187,73 @@ fun SmartSingleFieldCard(
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Text,
-                            imeAction = ImeAction.Done
+                            imeAction = if (isDiscountOpen) ImeAction.Next else ImeAction.Done
                         ),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                        modifier = Modifier.fillMaxWidth()
+                        keyboardActions = KeyboardActions(
+                            onNext = {
+                                if (isDiscountOpen) {
+                                    discountFocusRequester.requestFocus()
+                                } else {
+                                    dismissKeyboardAndFocus()
+                                }
+                            },
+                            onDone = {
+                                dismissKeyboardAndFocus()
+                            }
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(fieldFocusRequester)
+                            .focusProperties {
+                                if (!isDiscountOpen) {
+                                    next = dummyFocusRequester
+                                    down = dummyFocusRequester
+                                }
+                                onExit = { FocusRequester.Cancel }
+                            }
+                            .onFocusChanged { focusState ->
+                                if (focusState.isFocused) {
+                                    listener.onCardFocused(item.id)
+                                }
+                            }
+                            .onKeyEvent { keyEvent ->
+                                if (keyEvent.type == KeyEventType.KeyUp &&
+                                    (keyEvent.key == Key.Enter || keyEvent.key == Key.NumPadEnter ||
+                                            keyEvent.nativeKeyEvent.keyCode == AndroidKeyEvent.KEYCODE_NUMPAD_ENTER)
+                                ) {
+                                    if (!isDiscountOpen) {
+                                        dismissKeyboardAndFocus()
+                                        return@onKeyEvent true
+                                    }
+                                }
+                                false
+                            }
                     )
                 }
 
                 UnitDropdownMenu(
                     selectedUnit = item.unit,
-                    onUnitSelect = { listener.onUnitChange(item.id, it) })
+                    onUnitSelect = { listener.onUnitChange(item.id, it) }
+                )
             }
 
             Spacer(modifier = Modifier.height(10.dp))
-            DiscountSelectorRow(item = item, listener = listener)
+
+            // 3. Выбор скидки
+            DiscountSelectorRow(
+                item = item,
+                listener = listener,
+                discountFocusRequester = discountFocusRequester,
+                dummyFocusRequester = dummyFocusRequester,
+                onFocused = {
+                    listener.onCardFocused(item.id)
+                },
+                onDoneAction = {
+                    dismissKeyboardAndFocus()
+                }
+            )
+
+            // 4. Футер расчета
             ProductCalculationFooter(unit = item.unit, calcResult = calcResult)
         }
     }
