@@ -4,7 +4,6 @@ import android.graphics.Rect
 import com.google.mlkit.vision.text.Text
 import ru.embtlab.smartprice.domain.model.ParsedPriceTag
 import ru.embtlab.smartprice.domain.model.PriceTagLayoutProfile
-import ru.embtlab.smartprice.domain.model.ProductConstants
 import ru.embtlab.smartprice.domain.model.ProductUnit
 import ru.embtlab.smartprice.domain.util.FuzzyMatcher
 import kotlin.math.hypot
@@ -20,15 +19,8 @@ class ParsePriceTagUseCase {
     private val literTokens = listOf("л", "л.", "литр", "l")
     private val pieceTokens = listOf("шт", "шт.", "упак", "упаковка", "пак", "пачка", "pcs")
 
-    // Поиск цен в одной строке (включая квадратные точки, тире и спецсимволы)
     private val inlinePriceRegex = Regex("""(\d{1,5})\s*[\.,■▪•·\-–—]\s*(\d{2})""")
 
-    /**
-     * @param visionText объект текста ML Kit
-     * @param frameWidth ширина вырезанного кадра в пикселях
-     * @param frameHeight высота вырезанного кадра в пикселях
-     * @param learnedProfile профиль, полученный на основе предыдущих правок пользователя
-     */
     fun parseFromVisionText(
         visionText: Text,
         frameWidth: Int = 1000,
@@ -38,14 +30,14 @@ class ParsePriceTagUseCase {
         val allLines = visionText.textBlocks.flatMap { it.lines }
         val fullText = visionText.text
 
-        val detectedName = matchNameFromCatalog(allLines)
+        // 1. Поиск веса / объема
         val (detectedQuantity, detectedUnit) = extractQuantityWithFuzzy(allLines, fullText)
 
+        // 2. Центростремительный скоринг кандидатов цены
         val centerX = frameWidth / 2f
         val centerY = frameHeight / 2f
         val maxDist = hypot(centerX, centerY).coerceAtLeast(1f)
 
-        // 1. Центростремительный скоринг: отсекаем соседние ценники у краев рамки
         val scoredCandidateLines = allLines.filter { line ->
             val text = line.text.trim()
             val words = text.split(Regex("""\s+"""))
@@ -67,19 +59,21 @@ class ParsePriceTagUseCase {
         }.sortedByDescending { it.second }
 
         var detectedPrice: String? = null
+        var chosenPriceBox: Rect? = null
 
         for ((rubleLine, _) in scoredCandidateLines) {
             val box = rubleLine.boundingBox ?: continue
             val rawLineText = rubleLine.text.trim()
 
-            // Проверка 1: рубли и копейки в одной строке
+            // Вариант 1: рубли и копейки в одной строке
             val inlineMatch = inlinePriceRegex.find(rawLineText)
             if (inlineMatch != null) {
                 detectedPrice = "${inlineMatch.groupValues[1]}.${inlineMatch.groupValues[2]}"
+                chosenPriceBox = box
                 break
             }
 
-            // Проверка 2: рубли крупным шрифтом + геометрический поиск копеек по профилю
+            // Вариант 2: крупный блок рублей + геометрический захват копеек
             val rubleNumber = extractLeadingNumber(rawLineText)
             if (rubleNumber != null && rubleNumber != detectedQuantity && rubleNumber.toIntOrNull() in 5..99999) {
                 val centsValue = findCentsGeometrically(
@@ -92,6 +86,7 @@ class ParsePriceTagUseCase {
                 } else {
                     rubleNumber
                 }
+                chosenPriceBox = box
                 break
             }
         }
@@ -100,8 +95,11 @@ class ParsePriceTagUseCase {
             detectedPrice = parseFallbackPriceFuzzy(allLines, detectedQuantity)
         }
 
+        // 3. Универсальное геометрическое извлечение заголовка ценника без словарей
+        val detectedTitle = extractVisualHeaderTitle(allLines, chosenPriceBox)
+
         return ParsedPriceTag(
-            name = detectedName,
+            name = detectedTitle,
             price = detectedPrice,
             quantity = detectedQuantity,
             unit = detectedUnit
@@ -109,8 +107,45 @@ class ParsePriceTagUseCase {
     }
 
     /**
-     * Поиск копеек с учетом сохраненных коэффициентов профиля.
+     * Универсальный геометрический поиск заголовка товара над блоком цены.
      */
+    private fun extractVisualHeaderTitle(allLines: List<Text.Line>, priceBox: Rect?): String? {
+        val candidateLines = allLines.filter { line ->
+            val text = line.text.trim()
+            val box = line.boundingBox ?: return@filter false
+
+            // Строка должна находиться выше блока с ценой (с запасом 15px)
+            val isAbovePrice = priceBox == null || box.bottom <= priceBox.top + 15
+            // Должны присутствовать буквы (не чистый штрихкод или цена)
+            val hasLetters = text.any { it.isLetter() }
+            // Исключаем даты и длинные числовые коды
+            val isNotDateOrBarcode = !text.contains(Regex("""\b\d{2}[./]\d{2}""")) && !text.contains(Regex("""\d{10,}"""))
+            // Исключаем строки, содержащие только объем/вес (например: "0,95л" или "500 г")
+            val isNotPureWeight = !text.matches(Regex("""^[\d.,\s]+[гГgGkKкКлЛlLмМmM][\w.]*$"""))
+            // Исключаем строки со знаками валют или служебными маркерами цены
+            val isNotPriceLabel = !text.contains("цена", ignoreCase = true) && !text.contains("руб", ignoreCase = true)
+
+            isAbovePrice && hasLetters && isNotDateOrBarcode && !isNotPureWeight && isNotPriceLabel
+        }
+
+        // Выбираем строку с максимальной высотой шрифта в верхней части ценника
+        val bestHeaderLine = candidateLines.maxByOrNull { it.boundingBox?.height() ?: 0 } ?: return null
+
+        // Очищаем от служебных знаков и берем первые 2-4 смысловых слова
+        val cleanWords = bestHeaderLine.text
+            .replace(Regex("""[^a-zA-Zа-яА-ЯёЁ\s]"""), " ")
+            .split(Regex("""\s+"""))
+            .filter { it.length >= 2 }
+            .take(4)
+
+        if (cleanWords.isEmpty()) return null
+
+        // Форматируем в опрятный вид с заглавными буквами (Title Case)
+        return cleanWords.joinToString(" ") { word ->
+            word.lowercase().replaceFirstChar { it.uppercase() }
+        }
+    }
+
     private fun findCentsGeometrically(
         rubleBox: Rect,
         allLines: List<Text.Line>,
@@ -193,19 +228,6 @@ class ParsePriceTagUseCase {
             FuzzyMatcher.matchesAny(clean, pieceTokens, threshold = 0.65) -> ProductUnit.PIECE
             else -> null
         }
-    }
-
-    private fun matchNameFromCatalog(allLines: List<Text.Line>): String? {
-        for (line in allLines.take(4)) {
-            val lineWords = line.text.split(Regex("""[\s,.:;!?-]+""")).filter { it.length >= 3 }
-            for (word in lineWords) {
-                val matchedPreset = ProductConstants.CATALOG_PRODUCT_PRESETS.firstOrNull { preset ->
-                    preset.split(" ").any { pWord -> FuzzyMatcher.similarity(word, pWord) >= 0.78 }
-                }
-                if (matchedPreset != null) return matchedPreset
-            }
-        }
-        return null
     }
 
     private fun extractLeadingNumber(text: String): String? {

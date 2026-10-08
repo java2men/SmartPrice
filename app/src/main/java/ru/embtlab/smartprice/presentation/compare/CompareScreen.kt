@@ -77,7 +77,8 @@ import ru.embtlab.smartprice.presentation.theme.icons.History
 import ru.embtlab.smartprice.presentation.theme.icons.Refresh
 import ru.embtlab.smartprice.presentation.theme.icons.Tune
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class,
+@OptIn(
+    ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class,
     ExperimentalLayoutApi::class
 )
 @Composable
@@ -123,6 +124,16 @@ fun CompareScreen(
             CameraOcrScanner(
                 onParsed = { parsed ->
                     val id = uiState.scanningProductId ?: return@CameraOcrScanner
+
+                    // Если товар назывался по умолчанию ("Товар 1", "Товар 2"), подставляем найденное имя
+                    parsed.name?.let { foundName ->
+                        val currentItem = uiState.items.find { it.id == id }
+                        val isDefaultName = currentItem?.name.isNullOrBlank() || currentItem.name.startsWith("Товар")
+                        if (isDefaultName) {
+                            viewModel.onNameChanged(id, foundName)
+                        }
+                    }
+
                     parsed.price?.let { viewModel.onPriceChanged(id, it) }
                     parsed.quantity?.let { viewModel.onQuantityChanged(id, it) }
                     parsed.unit?.let { viewModel.onUnitChanged(id, it) }
@@ -154,11 +165,21 @@ fun CompareScreen(
     val cardListener = remember(viewModel) {
         object : ProductCardListener {
             override fun onNameChange(id: String, name: String) = viewModel.onNameChanged(id, name)
-            override fun onPriceChange(id: String, price: String) = viewModel.onPriceChanged(id, price)
-            override fun onQuantityChange(id: String, quantity: String) = viewModel.onQuantityChanged(id, quantity)
-            override fun onUnitChange(id: String, unit: ProductUnit) = viewModel.onUnitChanged(id, unit)
-            override fun onDiscountTypeChange(id: String, type: DiscountType) = viewModel.onDiscountTypeChanged(id, type)
-            override fun onCustomDiscountChange(id: String, percent: String) = viewModel.onCustomDiscountChanged(id, percent)
+            override fun onPriceChange(id: String, price: String) =
+                viewModel.onPriceChanged(id, price)
+
+            override fun onQuantityChange(id: String, quantity: String) =
+                viewModel.onQuantityChanged(id, quantity)
+
+            override fun onUnitChange(id: String, unit: ProductUnit) =
+                viewModel.onUnitChanged(id, unit)
+
+            override fun onDiscountTypeChange(id: String, type: DiscountType) =
+                viewModel.onDiscountTypeChanged(id, type)
+
+            override fun onCustomDiscountChange(id: String, percent: String) =
+                viewModel.onCustomDiscountChanged(id, percent)
+
             override fun onScanClick(id: String) = viewModel.startScanning(id)
             override fun onDelete(id: String) = viewModel.onTrashClick(id)
             override fun onCardFocused(id: String) {
@@ -183,7 +204,10 @@ fun CompareScreen(
                 actions = {
                     if (canSaveResult) {
                         IconButton(onClick = { viewModel.openSaveDialog() }) {
-                            Icon(imageVector = AppIcons.Default.BookmarkAdd, contentDescription = "Сохранить")
+                            Icon(
+                                imageVector = AppIcons.Default.BookmarkAdd,
+                                contentDescription = "Сохранить"
+                            )
                         }
                     }
                     IconButton(onClick = { viewModel.setHistorySheetVisible(true) }) {
@@ -204,7 +228,10 @@ fun CompareScreen(
                                 }
                             }
                         }) {
-                            Icon(imageVector = AppIcons.Default.Refresh, contentDescription = "Сброс")
+                            Icon(
+                                imageVector = AppIcons.Default.Refresh,
+                                contentDescription = "Сброс"
+                            )
                         }
                     }
                     IconButton(onClick = onOpenSettings) {
@@ -325,6 +352,7 @@ fun CompareScreen(
                             onDeleteRecentName = { viewModel.removeRecentName(it) },
                         )
                     }
+
                     CardStylePreset.SMART_SINGLE_FIELD -> {
                         SmartSingleFieldCard(
                             item = item,
@@ -335,6 +363,7 @@ fun CompareScreen(
                             onDeleteRecentName = { viewModel.removeRecentName(it) },
                         )
                     }
+
                     CardStylePreset.FULL_SCREEN_EDITOR -> {
                         CompactProductSummaryCard(
                             item = item,
