@@ -1,29 +1,43 @@
 package ru.embtlab.smartprice.presentation.compare.components
 
+import android.graphics.Bitmap
+import android.graphics.Rect
 import android.view.ViewGroup
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.FocusMeteringAction
-import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -31,10 +45,11 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import ru.embtlab.smartprice.domain.model.ParsedPriceTag
+import ru.embtlab.smartprice.domain.model.ProductUnit
 import ru.embtlab.smartprice.domain.usecase.ParsePriceTagUseCase
-import java.util.concurrent.Executors
 
-@androidx.annotation.OptIn(ExperimentalGetImage::class)
+private enum class SelectedTargetSlot { PRICE, QUANTITY }
+
 @Composable
 fun CameraOcrScanner(
     onParsed: (ParsedPriceTag) -> Unit,
@@ -46,107 +61,213 @@ fun CameraOcrScanner(
 
     val parser = remember { ParsePriceTagUseCase() }
     val recognizer = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
-    val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
 
-    var latestParsed by remember { mutableStateOf<ParsedPriceTag?>(null) }
     var cameraInstance by remember { mutableStateOf<Camera?>(null) }
+    var previewViewRef by remember { mutableStateOf<PreviewView?>(null) }
     var isFlashOn by remember { mutableStateOf(false) }
 
+    var screenSize by remember { mutableStateOf(IntSize.Zero) }
+    var frameRectOnScreen by remember { mutableStateOf<Rect?>(null) }
+
+    var isFrozen by remember { mutableStateOf(false) }
+    var fullFrozenBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var isProcessing by remember { mutableStateOf(false) }
+
+    // Данные для полей
+    var selectedPrice by remember { mutableStateOf("") }
+    var selectedQuantity by remember { mutableStateOf("") }
+    var selectedUnit by remember { mutableStateOf(ProductUnit.GRAM) }
+
+    // Активный слот: куда отправлять число при клике на чип
+    var activeSlot by remember { mutableStateOf(SelectedTargetSlot.PRICE) }
+
+    // Единый список всех найденных чисел на ценнике
+    var detectedNumbersList by remember { mutableStateOf<List<String>>(emptyList()) }
+
     DisposableEffect(Unit) {
-        onDispose {
-            recognizer.close()
-            cameraExecutor.shutdown()
+        onDispose { recognizer.close() }
+    }
+
+    val captureAndFreeze: () -> Unit = {
+        val previewView = previewViewRef
+        val bitmap = previewView?.bitmap
+        val rect = frameRectOnScreen
+
+        if (bitmap != null && rect != null && !isProcessing) {
+            isProcessing = true
+            fullFrozenBitmap = bitmap
+            isFrozen = true
+
+            val scaleX = bitmap.width.toFloat() / screenSize.width.coerceAtLeast(1)
+            val scaleY = bitmap.height.toFloat() / screenSize.height.coerceAtLeast(1)
+
+            val cropLeft = ((rect.left * scaleX) - (bitmap.width * 0.04f)).toInt().coerceAtLeast(0)
+            val cropTop = ((rect.top * scaleY) - (bitmap.height * 0.04f)).toInt().coerceAtLeast(0)
+            val cropWidth = ((rect.width() * scaleX) + (bitmap.width * 0.08f)).toInt().coerceAtMost(bitmap.width - cropLeft)
+            val cropHeight = ((rect.height() * scaleY) + (bitmap.height * 0.08f)).toInt().coerceAtMost(bitmap.height - cropTop)
+
+            val croppedBitmap = try {
+                Bitmap.createBitmap(bitmap, cropLeft, cropTop, cropWidth, cropHeight)
+            } catch (e: Exception) {
+                bitmap
+            }
+
+            val inputImage = InputImage.fromBitmap(croppedBitmap, 0)
+            recognizer.process(inputImage)
+                .addOnSuccessListener { visionText ->
+                    // 1. Автоматический интеллектуальный разбор с пространственной склейкой копеек
+                    val autoParsed = parser.parseFromVisionText(visionText)
+                    selectedPrice = autoParsed.price ?: ""
+                    selectedQuantity = autoParsed.quantity ?: ""
+                    if (autoParsed.unit != null) {
+                        selectedUnit = autoParsed.unit
+                    }
+
+                    val rawText = visionText.text
+                    val normalizedText = rawText
+                        .replace(Regex("""(?<=\d)\s*[rR]\b"""), "г")
+                        .replace(Regex("""(?<=\d)\s*[gG]\b"""), "г")
+
+                    // 2. Глубокий поиск веса/объема (например: 200Г, 500 гр, 0.9 л)
+                    if (selectedQuantity.isBlank()) {
+                        val weightMatch = Regex("""(\d{2,4})\s*(?:[гГgGrR]|гр|ГР)(?!\w)""").find(normalizedText)?.groupValues?.get(1)
+                            ?: Regex("""(\d{1,2}(?:[.,]\d{1,3})?)\s*(?:[кКkK][гГgG])(?!\w)""").find(normalizedText)?.groupValues?.get(1)
+                            ?: Regex("""(\d{2,4})\s*(?:[мМmM][лЛlL])(?!\w)""").find(normalizedText)?.groupValues?.get(1)
+
+                        if (weightMatch != null) {
+                            selectedQuantity = weightMatch.replace(',', '.')
+                            selectedUnit = when {
+                                normalizedText.contains(Regex("""[кКkK][гГgG]""")) -> ProductUnit.KILOGRAM
+                                normalizedText.contains(Regex("""[мМmM][лЛlL]""")) -> ProductUnit.MILLILITER
+                                else -> ProductUnit.GRAM
+                            }
+                        }
+                    }
+
+                    // 3. Сбор ВСЕХ чисел в чипсы (с поддержкой копеек и квадратных точек)
+                    val allNumbers = mutableListOf<String>()
+
+                    // Первым кандидатом идет склеенная цена из UseCase (например, 229.99)
+                    if (selectedPrice.isNotBlank()) {
+                        allNumbers.add(selectedPrice)
+                    }
+
+                    // Ищем все строчные цены с любыми разделителями (269.99, 229■99, 149-90)
+                    val regexWithSeparators = Regex("""(\d{1,5})\s*[\.,■•·\-–]\s*(\d{2})""")
+                    regexWithSeparators.findAll(rawText).forEach { match ->
+                        allNumbers.add("${match.groupValues[1]}.${match.groupValues[2]}")
+                    }
+
+                    // Добавляем все остальные изолированные числа (200, 269, 229, 15)
+                    val extractedNumbers = Regex("""(\d+(?:[.,]\d+)?)""")
+                        .findAll(rawText)
+                        .map { it.groupValues[1].replace(',', '.') }
+                        .filter {
+                            val num = it.toDoubleOrNull() ?: 0.0
+                            num > 0 && it.length <= 6
+                        }
+                        .toList()
+
+                    allNumbers.addAll(extractedNumbers)
+
+                    detectedNumbersList = allNumbers.distinct().take(10)
+
+                    // Фокус: если цена найдена, сразу активируем слот количества
+                    if (selectedPrice.isNotBlank() && selectedQuantity.isBlank()) {
+                        activeSlot = SelectedTargetSlot.QUANTITY
+                    } else if (selectedPrice.isBlank()) {
+                        activeSlot = SelectedTargetSlot.PRICE
+                    }
+                }
+                .addOnCompleteListener { isProcessing = false }
         }
     }
 
-    Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
-        var previewViewRef by remember { mutableStateOf<PreviewView?>(null) }
+    val unfreeze: () -> Unit = {
+        isFrozen = false
+        fullFrozenBitmap = null
+        selectedPrice = ""
+        selectedQuantity = ""
+        selectedUnit = ProductUnit.GRAM
+        detectedNumbersList = emptyList()
+        activeSlot = SelectedTargetSlot.PRICE
+    }
 
-        // 1. Полноэкранный видоискатель
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .onGloballyPositioned { screenSize = it.size }
+    ) {
         AndroidView(
             factory = { ctx ->
                 val previewView = PreviewView(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
+                    layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 }
                 previewViewRef = previewView
 
                 val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
                 cameraProviderFuture.addListener({
                     val cameraProvider = cameraProviderFuture.get()
-
                     val preview = Preview.Builder().build().also {
                         it.setSurfaceProvider(previewView.surfaceProvider)
                     }
-
-                    val imageAnalyzer = ImageAnalysis.Builder()
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .build()
-                        .also { analyzer ->
-                            analyzer.setAnalyzer(cameraExecutor) { imageProxy ->
-                                val mediaImage = imageProxy.image
-                                if (mediaImage != null) {
-                                    val image = InputImage.fromMediaImage(
-                                        mediaImage,
-                                        imageProxy.imageInfo.rotationDegrees
-                                    )
-                                    recognizer.process(image)
-                                        .addOnSuccessListener { visionText ->
-                                            // Используем интеллектуальный парсер с анализом размера и положения блоков
-                                            val parsed = parser.parseFromVisionText(visionText)
-                                            if (parsed.price != null || parsed.quantity != null) {
-                                                latestParsed = parsed
-                                            }
-                                        }
-                                        .addOnCompleteListener {
-                                            imageProxy.close()
-                                        }
-                                } else {
-                                    imageProxy.close()
-                                }
-                            }
-                        }
-
                     try {
                         cameraProvider.unbindAll()
-                        cameraInstance = cameraProvider.bindToLifecycle(
-                            lifecycleOwner,
-                            CameraSelector.DEFAULT_BACK_CAMERA,
-                            preview,
-                            imageAnalyzer
-                        )
+                        cameraInstance = cameraProvider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview)
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
                 }, ContextCompat.getMainExecutor(ctx))
-
                 previewView
             },
             modifier = Modifier
                 .fillMaxSize()
-                .pointerInput(Unit) {
-                    // Тап по экрану для ручного фокуса в точку ценника
-                    detectTapGestures { offset ->
-                        val view = previewViewRef ?: return@detectTapGestures
-                        val factory = view.meteringPointFactory
-                        val point = factory.createPoint(offset.x, offset.y)
-                        val action = FocusMeteringAction.Builder(point).build()
-                        cameraInstance?.cameraControl?.startFocusAndMetering(action)
+                .pointerInput(isFrozen) {
+                    if (!isFrozen) {
+                        detectTapGestures(
+                            onTap = { offset ->
+                                val view = previewViewRef ?: return@detectTapGestures
+                                val factory = view.meteringPointFactory
+                                val point = factory.createPoint(offset.x, offset.y)
+                                val action = FocusMeteringAction.Builder(point).build()
+                                cameraInstance?.cameraControl?.startFocusAndMetering(action)
+                            }
+                        )
                     }
                 }
         )
 
-        // 2. Рамка прицеливания на ценник
+        if (isFrozen && fullFrozenBitmap != null) {
+            Image(
+                bitmap = fullFrozenBitmap!!.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
+        }
+
         Box(
             modifier = Modifier
-                .size(width = 300.dp, height = 180.dp)
+                .size(width = 320.dp, height = 160.dp)
                 .align(Alignment.Center)
-                .border(2.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
+                .onGloballyPositioned { coords ->
+                    val pos = coords.positionInRoot()
+                    frameRectOnScreen = Rect(
+                        pos.x.toInt(),
+                        pos.y.toInt(),
+                        (pos.x + coords.size.width).toInt(),
+                        (pos.y + coords.size.height).toInt()
+                    )
+                }
+                .border(
+                    width = 2.dp,
+                    color = if (isFrozen) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.85f),
+                    shape = RoundedCornerShape(12.dp)
+                )
         )
 
-        // 3. Верхняя панель: кнопка закрытия и фонарик
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -163,75 +284,228 @@ fun CameraOcrScanner(
                 Text("✕", color = Color.White, fontWeight = FontWeight.Bold)
             }
 
-            // Переключатель фонарика
-            FilledTonalIconButton(
-                onClick = {
-                    isFlashOn = !isFlashOn
-                    cameraInstance?.cameraControl?.enableTorch(isFlashOn)
-                },
-                shape = CircleShape,
-                colors = IconButtonDefaults.filledTonalIconButtonColors(
-                    containerColor = if (isFlashOn) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.5f)
-                )
-            ) {
-                Text(
-                    text = if (isFlashOn) "💡 Вкл" else "💡",
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelSmall
-                )
+            if (!isFrozen) {
+                FilledTonalIconButton(
+                    onClick = {
+                        isFlashOn = !isFlashOn
+                        cameraInstance?.cameraControl?.enableTorch(isFlashOn)
+                    },
+                    shape = CircleShape,
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = if (isFlashOn) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Text(if (isFlashOn) "💡 Вкл" else "💡", color = Color.White)
+                }
+            } else {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text(
+                        text = "Кадр зафиксирован",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
             }
         }
 
-        // 4. Нижняя панель с предпросмотром распознанных данных
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .background(Color.Black.copy(alpha = 0.75f))
+                .background(Color.Black.copy(alpha = 0.90f))
                 .navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            val priceStr = latestParsed?.price?.let { "$it ₽" } ?: "—"
-            val qtyStr = latestParsed?.quantity?.let { "$it ${latestParsed?.unit?.label ?: ""}" } ?: "—"
-
-            Text(
-                text = "Наведите рамку на ценник (тапните для фокуса)",
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.LightGray
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Цена: $priceStr   |   Кол-во: $qtyStr",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onClose,
-                    modifier = Modifier.weight(1f)
+            if (!isFrozen) {
+                Text(
+                    text = "Поместите ценник в рамку и нажмите спуск",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.LightGray
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Box(
+                    modifier = Modifier
+                        .size(68.dp)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                        .clickable { captureAndFreeze() },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text("Отмена", color = Color.White)
+                    Box(modifier = Modifier.size(56.dp).clip(CircleShape).border(3.dp, Color.Black, CircleShape))
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Слот: ЦЕНА
+                    Surface(
+                        onClick = { activeSlot = SelectedTargetSlot.PRICE },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.primaryContainer else Color.DarkGray,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = if (activeSlot == SelectedTargetSlot.PRICE) "👉 ВЫБОР ЦЕНЫ" else "ЦЕНА",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.primary else Color.LightGray
+                            )
+                            Text(
+                                text = if (selectedPrice.isNotBlank()) "$selectedPrice ₽" else "—",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.onPrimaryContainer else Color.White
+                            )
+                        }
+                    }
+
+                    // Слот: КОЛИЧЕСТВО / ВЕС
+                    Surface(
+                        onClick = { activeSlot = SelectedTargetSlot.QUANTITY },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.primaryContainer else Color.DarkGray,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = if (activeSlot == SelectedTargetSlot.QUANTITY) "👉 ВЫБОР ВЕСА" else "ВЕС / КОЛ-ВО",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.primary else Color.LightGray
+                            )
+                            Text(
+                                text = if (selectedQuantity.isNotBlank()) "$selectedQuantity ${selectedUnit.label}" else "—",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.onPrimaryContainer else Color.White
+                            )
+                        }
+                    }
                 }
 
-                Button(
-                    onClick = {
-                        latestParsed?.let(onParsed)
-                        onClose()
-                    },
-                    enabled = latestParsed?.price != null || latestParsed?.quantity != null,
-                    modifier = Modifier.weight(1f)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = if (activeSlot == SelectedTargetSlot.PRICE) "Нажмите на число, чтобы задать ЦЕНУ:" else "Нажмите на число, чтобы задать ВЕС:",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.LightGray,
+                    modifier = Modifier.align(Alignment.Start)
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                if (detectedNumbersList.isNotEmpty()) {
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(detectedNumbersList) { number ->
+                            val isSelectedInCurrentSlot = when (activeSlot) {
+                                SelectedTargetSlot.PRICE -> selectedPrice == number
+                                SelectedTargetSlot.QUANTITY -> selectedQuantity == number
+                            }
+
+                            FilterChip(
+                                selected = isSelectedInCurrentSlot,
+                                onClick = {
+                                    if (activeSlot == SelectedTargetSlot.PRICE) {
+                                        selectedPrice = number
+                                        if (selectedQuantity.isBlank()) {
+                                            activeSlot = SelectedTargetSlot.QUANTITY
+                                        }
+                                    } else {
+                                        selectedQuantity = number
+                                    }
+                                },
+                                label = {
+                                    Text(
+                                        text = if (activeSlot == SelectedTargetSlot.PRICE) "$number ₽" else number,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "Числа не найдены. Попробуйте переснять ближе.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+
+                if (activeSlot == SelectedTargetSlot.QUANTITY) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.Start),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Единица:", style = MaterialTheme.typography.labelSmall, color = Color.LightGray)
+                        listOf(
+                            ProductUnit.GRAM,
+                            ProductUnit.KILOGRAM,
+                            ProductUnit.MILLILITER,
+                            ProductUnit.LITER,
+                            ProductUnit.PIECE
+                        ).forEach { unit ->
+                            FilterChip(
+                                selected = selectedUnit == unit,
+                                onClick = { selectedUnit = unit },
+                                label = { Text(unit.label, fontSize = 11.sp) },
+                                modifier = Modifier.height(32.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text("Применить")
+                    OutlinedButton(
+                        onClick = unfreeze,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Переснять", color = Color.White)
+                    }
+
+                    Button(
+                        onClick = {
+                            onParsed(
+                                ParsedPriceTag(
+                                    price = selectedPrice.ifBlank { null },
+                                    quantity = selectedQuantity.ifBlank { null },
+                                    unit = if (selectedQuantity.isNotBlank()) selectedUnit else null
+                                )
+                            )
+                            onClose()
+                        },
+                        enabled = selectedPrice.isNotBlank() || selectedQuantity.isNotBlank(),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Применить")
+                    }
                 }
             }
+        }
+
+        AnimatedVisibility(
+            visible = isProcessing,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         }
     }
 }
