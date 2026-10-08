@@ -42,9 +42,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import kotlinx.coroutines.launch
+import ru.embtlab.smartprice.data.local.SettingsDataStore
 import ru.embtlab.smartprice.domain.model.ParsedPriceTag
+import ru.embtlab.smartprice.domain.model.PriceTagLayoutProfile
 import ru.embtlab.smartprice.domain.model.ProductUnit
 import ru.embtlab.smartprice.domain.usecase.ParsePriceTagUseCase
 
@@ -58,9 +62,19 @@ fun CameraOcrScanner(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val coroutineScope = rememberCoroutineScope()
+    val settingsDataStore = remember { SettingsDataStore(context) }
 
     val parser = remember { ParsePriceTagUseCase() }
     val recognizer = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
+
+    // Загрузка адаптированного профиля из DataStore
+    val profileState by settingsDataStore.priceTagProfileFlow.collectAsState(initial = PriceTagLayoutProfile())
+    var currentLearnedProfile by remember { mutableStateOf(PriceTagLayoutProfile()) }
+
+    LaunchedEffect(profileState) {
+        currentLearnedProfile = profileState
+    }
 
     var cameraInstance by remember { mutableStateOf<Camera?>(null) }
     var previewViewRef by remember { mutableStateOf<PreviewView?>(null) }
@@ -73,16 +87,15 @@ fun CameraOcrScanner(
     var fullFrozenBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
 
-    // Значения слотов
+    // Последний распознанный объект для снятия замеров обучения
+    var lastVisionText by remember { mutableStateOf<Text?>(null) }
+
     var detectedName by remember { mutableStateOf<String?>(null) }
     var selectedPrice by remember { mutableStateOf("") }
     var selectedQuantity by remember { mutableStateOf("") }
     var selectedUnit by remember { mutableStateOf(ProductUnit.GRAM) }
 
-    // Активный слот: цена или вес
     var activeSlot by remember { mutableStateOf(SelectedTargetSlot.PRICE) }
-
-    // Единый пул найденных на ценнике чисел
     var detectedNumbersList by remember { mutableStateOf<List<String>>(emptyList()) }
 
     DisposableEffect(Unit) {
@@ -116,11 +129,16 @@ fun CameraOcrScanner(
             val inputImage = InputImage.fromBitmap(croppedBitmap, 0)
             recognizer.process(inputImage)
                 .addOnSuccessListener { visionText ->
+                    lastVisionText = visionText
+
+                    // Применяем сохраненный профиль пользователя
                     val autoParsed = parser.parseFromVisionText(
                         visionText = visionText,
                         frameWidth = croppedBitmap.width,
-                        frameHeight = croppedBitmap.height
+                        frameHeight = croppedBitmap.height,
+                        learnedProfile = currentLearnedProfile
                     )
+
                     detectedName = autoParsed.name
                     selectedPrice = autoParsed.price ?: ""
                     selectedQuantity = autoParsed.quantity ?: ""
@@ -165,6 +183,7 @@ fun CameraOcrScanner(
     val unfreeze: () -> Unit = {
         isFrozen = false
         fullFrozenBitmap = null
+        lastVisionText = null
         detectedName = null
         selectedPrice = ""
         selectedQuantity = ""
@@ -173,7 +192,36 @@ fun CameraOcrScanner(
         activeSlot = SelectedTargetSlot.PRICE
     }
 
-    // Обработчик нажатия клавиш на встроенном цифровом ряду
+    /**
+     * Снятие физических пропорций ценника и дообучение профиля
+     */
+    val learnFromUserSelection: (String) -> Unit = { finalPrice ->
+        val vision = lastVisionText
+        if (vision != null && finalPrice.contains('.')) {
+            val rublePart = finalPrice.substringBefore('.')
+            val centsPart = finalPrice.substringAfter('.')
+
+            val allLines = vision.textBlocks.flatMap { it.lines }
+            val rubleBox = allLines.find { it.text.contains(rublePart) }?.boundingBox
+            val centsBox = allLines.find { it.text.contains(centsPart) }?.boundingBox
+
+            if (rubleBox != null && centsBox != null && rubleBox != centsBox) {
+                val observedHeightRatio = centsBox.height().toFloat() / rubleBox.height().coerceAtLeast(1)
+                val observedOffsetRatio = (centsBox.left - rubleBox.right).toFloat() / rubleBox.width().coerceAtLeast(1)
+
+                val updatedProfile = currentLearnedProfile.updateWithSample(
+                    newHeightRatio = observedHeightRatio,
+                    newOffsetRatio = observedOffsetRatio
+                )
+                currentLearnedProfile = updatedProfile
+
+                coroutineScope.launch {
+                    settingsDataStore.savePriceTagProfile(updatedProfile)
+                }
+            }
+        }
+    }
+
     val onKeyClick: (String) -> Unit = { key ->
         val currentVal = if (activeSlot == SelectedTargetSlot.PRICE) selectedPrice else selectedQuantity
         val newVal = when (key) {
@@ -189,7 +237,6 @@ fun CameraOcrScanner(
                 if (integerPart.isNotEmpty()) "$integerPart.99" else "0.99"
             }
             else -> {
-                // Ввод цифры (с защитой от слишком длинных чисел)
                 if (currentVal.length < 7) currentVal + key else currentVal
             }
         }
@@ -207,7 +254,6 @@ fun CameraOcrScanner(
             .background(Color.Black)
             .onGloballyPositioned { screenSize = it.size }
     ) {
-        // Видоискатель CameraX
         AndroidView(
             factory = { ctx ->
                 val previewView = PreviewView(ctx).apply {
@@ -254,7 +300,6 @@ fun CameraOcrScanner(
                 }
         )
 
-        // Замороженный стоп-кадр
         if (isFrozen && fullFrozenBitmap != null) {
             Image(
                 bitmap = fullFrozenBitmap!!.asImageBitmap(),
@@ -265,7 +310,6 @@ fun CameraOcrScanner(
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.40f)))
         }
 
-        // Рамка сканирования
         Box(
             modifier = Modifier
                 .size(width = 320.dp, height = 160.dp)
@@ -286,7 +330,6 @@ fun CameraOcrScanner(
                 )
         )
 
-        // Верхний бар
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -322,7 +365,7 @@ fun CameraOcrScanner(
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     Text(
-                        text = "Кадр зафиксирован",
+                        text = if (currentLearnedProfile.samplesCount > 0) "Профиль: обучен (${currentLearnedProfile.samplesCount})" else "Кадр зафиксирован",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
@@ -331,7 +374,6 @@ fun CameraOcrScanner(
             }
         }
 
-        // Нижняя панель
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -359,17 +401,15 @@ fun CameraOcrScanner(
                     Box(modifier = Modifier.size(56.dp).clip(CircleShape).border(3.dp, Color.Black, CircleShape))
                 }
             } else {
-                // 1. Статичные слоты без системных инпутов (выбор тапом)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Слот ЦЕНЫ
                     Surface(
                         onClick = { activeSlot = SelectedTargetSlot.PRICE },
                         shape = RoundedCornerShape(10.dp),
                         color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.primaryContainer else Color.DarkGray,
-                        border = if (activeSlot == SelectedTargetSlot.PRICE) borderStrokeSelected() else null,
+                        border = if (activeSlot == SelectedTargetSlot.PRICE) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
                         modifier = Modifier.weight(1f)
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
@@ -389,12 +429,11 @@ fun CameraOcrScanner(
                         }
                     }
 
-                    // Слот КОЛИЧЕСТВА / ВЕСА
                     Surface(
                         onClick = { activeSlot = SelectedTargetSlot.QUANTITY },
                         shape = RoundedCornerShape(10.dp),
                         color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.primaryContainer else Color.DarkGray,
-                        border = if (activeSlot == SelectedTargetSlot.QUANTITY) borderStrokeSelected() else null,
+                        border = if (activeSlot == SelectedTargetSlot.QUANTITY) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
                         modifier = Modifier.weight(1f)
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
@@ -417,7 +456,6 @@ fun CameraOcrScanner(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 2. ВСТРОЕННЫЙ ЦИФРОВОЙ РЯД (Клавиатура больше не нужна)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -441,7 +479,6 @@ fun CameraOcrScanner(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Дополнительный ряд быстрых модификаторов (. • .99 • Backspace • Clear)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -485,7 +522,6 @@ fun CameraOcrScanner(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 3. Лента распознанных чисел с ценника (в 1 тап)
                 Text(
                     text = if (activeSlot == SelectedTargetSlot.PRICE) "Числа с ценника (кликните для ЦЕНЫ):" else "Числа с ценника (кликните для ВЕСА):",
                     style = MaterialTheme.typography.labelSmall,
@@ -529,7 +565,6 @@ fun CameraOcrScanner(
                     }
                 }
 
-                // 4. Селектор единиц измерения
                 if (activeSlot == SelectedTargetSlot.QUANTITY) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(
@@ -557,7 +592,6 @@ fun CameraOcrScanner(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // 5. Кнопки «Переснять» / «Применить»
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -571,6 +605,7 @@ fun CameraOcrScanner(
 
                     Button(
                         onClick = {
+                            learnFromUserSelection(selectedPrice)
                             onParsed(
                                 ParsedPriceTag(
                                     name = detectedName,
@@ -599,9 +634,4 @@ fun CameraOcrScanner(
             CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         }
     }
-}
-
-@Composable
-private fun borderStrokeSelected(): androidx.compose.foundation.BorderStroke {
-    return androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
 }

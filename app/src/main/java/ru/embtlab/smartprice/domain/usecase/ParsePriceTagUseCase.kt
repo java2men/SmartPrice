@@ -20,14 +20,14 @@ class ParsePriceTagUseCase {
     private val literTokens = listOf("л", "л.", "литр", "l")
     private val pieceTokens = listOf("шт", "шт.", "упак", "упаковка", "пак", "пачка", "pcs")
 
-    // Поиск цен в одной строке с любыми разделителями (■, •, ·, -, точка, запятая)
+    // Поиск цен в одной строке (включая квадратные точки, тире и спецсимволы)
     private val inlinePriceRegex = Regex("""(\d{1,5})\s*[\.,■▪•·\-–—]\s*(\d{2})""")
 
     /**
-     * @param visionText распознанный блок ML Kit
-     * @param frameWidth ширина рамки видоискателя
-     * @param frameHeight высота рамки видоискателя
-     * @param learnedProfile профиль, адаптированный по предыдущим ручным выборам пользователя
+     * @param visionText объект текста ML Kit
+     * @param frameWidth ширина вырезанного кадра в пикселях
+     * @param frameHeight высота вырезанного кадра в пикселях
+     * @param learnedProfile профиль, полученный на основе предыдущих правок пользователя
      */
     fun parseFromVisionText(
         visionText: Text,
@@ -45,7 +45,7 @@ class ParsePriceTagUseCase {
         val centerY = frameHeight / 2f
         val maxDist = hypot(centerX, centerY).coerceAtLeast(1f)
 
-        // 1. Центростремительная фильтрация: отсекаем соседние ценники
+        // 1. Центростремительный скоринг: отсекаем соседние ценники у краев рамки
         val scoredCandidateLines = allLines.filter { line ->
             val text = line.text.trim()
             val words = text.split(Regex("""\s+"""))
@@ -60,11 +60,8 @@ class ParsePriceTagUseCase {
             val boxCenterY = box.centerY().toFloat()
             val distToCenter = hypot(boxCenterX - centerX, boxCenterY - centerY)
 
-            // Нормализованный штраф за удаление от центра рамки (от 1.0 в центре до 0.15 на краях)
             val centerWeight = (1.0f - (distToCenter / maxDist) * 0.85f).coerceIn(0.15f, 1.0f)
             val fontHeight = box.height().toFloat()
-
-            // Итоговый скор: высота шрифта * центростремительный приоритет
             val finalScore = fontHeight * centerWeight
             line to finalScore
         }.sortedByDescending { it.second }
@@ -75,14 +72,14 @@ class ParsePriceTagUseCase {
             val box = rubleLine.boundingBox ?: continue
             val rawLineText = rubleLine.text.trim()
 
-            // Вариант 1: рубли и копейки в одной строке (включая квадратные точки)
+            // Проверка 1: рубли и копейки в одной строке
             val inlineMatch = inlinePriceRegex.find(rawLineText)
             if (inlineMatch != null) {
                 detectedPrice = "${inlineMatch.groupValues[1]}.${inlineMatch.groupValues[2]}"
                 break
             }
 
-            // Вариант 2: крупный блок рублей + геометрический захват копеек без разделителя
+            // Проверка 2: рубли крупным шрифтом + геометрический поиск копеек по профилю
             val rubleNumber = extractLeadingNumber(rawLineText)
             if (rubleNumber != null && rubleNumber != detectedQuantity && rubleNumber.toIntOrNull() in 5..99999) {
                 val centsValue = findCentsGeometrically(
@@ -112,30 +109,31 @@ class ParsePriceTagUseCase {
     }
 
     /**
-     * Поиск копеек справа сверху от рублей, устойчивый к отсутствию разделителей и квадратным точкам.
+     * Поиск копеек с учетом сохраненных коэффициентов профиля.
      */
     private fun findCentsGeometrically(
         rubleBox: Rect,
         allLines: List<Text.Line>,
         profile: PriceTagLayoutProfile
     ): String? {
-        val maxSearchRight = rubleBox.right + (rubleBox.width() * 1.10f)
-        val minSearchLeft = rubleBox.right - (rubleBox.width() * 0.25f)
+        val expectedRightMin = rubleBox.right - (rubleBox.width() * 0.25f)
+        val expectedRightMax = rubleBox.right + (rubleBox.width() * profile.centsOffsetRatio * 1.6f)
+
+        val minHeightRatio = (profile.centsHeightRatio * 0.55f).coerceAtLeast(0.12f)
+        val maxHeightRatio = (profile.centsHeightRatio * 1.55f).coerceAtMost(0.90f)
 
         for (line in allLines) {
             val otherBox = line.boundingBox ?: continue
             if (otherBox == rubleBox) continue
 
-            val isToTheRight = otherBox.left in minSearchLeft.toInt()..maxSearchRight.toInt()
-            // Копейки находятся в верхней половине рублей
-            val isVerticallyAligned = otherBox.top >= (rubleBox.top - rubleBox.height() * 0.40f) &&
-                    otherBox.top <= (rubleBox.bottom - rubleBox.height() * 0.15f)
+            val isToTheRight = otherBox.left in expectedRightMin.toInt()..expectedRightMax.toInt()
+            val isVerticallyAligned = otherBox.top >= (rubleBox.top - rubleBox.height() * 0.45f) &&
+                    otherBox.top <= (rubleBox.bottom - rubleBox.height() * 0.10f)
 
-            // Проверка соотношения высоты (копейки ощутимо мельче рублей)
-            val heightRatio = otherBox.height().toFloat() / rubleBox.height().coerceAtLeast(1)
-            val isSmallerFont = heightRatio in 0.18f..0.75f
+            val actualHeightRatio = otherBox.height().toFloat() / rubleBox.height().coerceAtLeast(1)
+            val isMatchingLearnedHeight = actualHeightRatio in minHeightRatio..maxHeightRatio
 
-            if (isToTheRight && isVerticallyAligned && isSmallerFont) {
+            if (isToTheRight && isVerticallyAligned && isMatchingLearnedHeight) {
                 val digitsInLine = line.text.filter { it.isDigit() }
                 if (digitsInLine.length >= 2) {
                     return digitsInLine.take(2)
