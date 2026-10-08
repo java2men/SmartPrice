@@ -116,8 +116,12 @@ fun CameraOcrScanner(
             val inputImage = InputImage.fromBitmap(croppedBitmap, 0)
             recognizer.process(inputImage)
                 .addOnSuccessListener { visionText ->
-                    // 1. Автоматический разбор с нечётким поиском и склейкой надстрочных копеек
-                    val autoParsed = parser.parseFromVisionText(visionText)
+                    // Передаем размеры croppedBitmap: центр рассчитывается строго по центру видоискателя
+                    val autoParsed = parser.parseFromVisionText(
+                        visionText = visionText,
+                        frameWidth = croppedBitmap.width,
+                        frameHeight = croppedBitmap.height
+                    )
                     detectedName = autoParsed.name
                     selectedPrice = autoParsed.price ?: ""
                     selectedQuantity = autoParsed.quantity ?: ""
@@ -127,21 +131,17 @@ fun CameraOcrScanner(
 
                     val rawText = visionText.text
 
-                    // 2. Сбор всех чисел ценника в единую ленту
+                    // Сбор чисел в чипсы с поддержкой квадратных точек и копеек
                     val allNumbers = mutableListOf<String>()
-
-                    // Первым кандидатом выставляем склеенную цену (например, 229.99)
                     if (selectedPrice.isNotBlank()) {
                         allNumbers.add(selectedPrice)
                     }
 
-                    // Числа со спец-разделителями (квадратные точки, тире, запятые)
-                    val regexWithSeparators = Regex("""(\d{1,5})\s*[\.,■•·\-–]\s*(\d{2})""")
+                    val regexWithSeparators = Regex("""(\d{1,5})\s*[\.,■▪•·\-–—]\s*(\d{2})""")
                     regexWithSeparators.findAll(rawText).forEach { match ->
                         allNumbers.add("${match.groupValues[1]}.${match.groupValues[2]}")
                     }
 
-                    // Любые изолированные последовательности цифр
                     val extractedNumbers = Regex("""(\d+(?:[.,]\d+)?)""")
                         .findAll(rawText)
                         .map { it.groupValues[1].replace(',', '.') }
@@ -152,10 +152,8 @@ fun CameraOcrScanner(
                         .toList()
 
                     allNumbers.addAll(extractedNumbers)
-
                     detectedNumbersList = allNumbers.distinct().take(10)
 
-                    // Переключаем фокус на вес, если цена определена автоматически
                     if (selectedPrice.isNotBlank() && selectedQuantity.isBlank()) {
                         activeSlot = SelectedTargetSlot.QUANTITY
                     } else if (selectedPrice.isBlank()) {
@@ -163,6 +161,7 @@ fun CameraOcrScanner(
                     }
                 }
                 .addOnCompleteListener { isProcessing = false }
+            
         }
     }
 
