@@ -34,13 +34,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -74,6 +74,7 @@ fun CameraOcrScanner(
     var isProcessing by remember { mutableStateOf(false) }
 
     // Данные для полей
+    var detectedName by remember { mutableStateOf<String?>(null) }
     var selectedPrice by remember { mutableStateOf("") }
     var selectedQuantity by remember { mutableStateOf("") }
     var selectedUnit by remember { mutableStateOf(ProductUnit.GRAM) }
@@ -115,8 +116,9 @@ fun CameraOcrScanner(
             val inputImage = InputImage.fromBitmap(croppedBitmap, 0)
             recognizer.process(inputImage)
                 .addOnSuccessListener { visionText ->
-                    // 1. Автоматический интеллектуальный разбор с пространственной склейкой копеек
+                    // 1. Автоматический разбор с нечётким поиском и склейкой надстрочных копеек
                     val autoParsed = parser.parseFromVisionText(visionText)
+                    detectedName = autoParsed.name
                     selectedPrice = autoParsed.price ?: ""
                     selectedQuantity = autoParsed.quantity ?: ""
                     if (autoParsed.unit != null) {
@@ -124,41 +126,22 @@ fun CameraOcrScanner(
                     }
 
                     val rawText = visionText.text
-                    val normalizedText = rawText
-                        .replace(Regex("""(?<=\d)\s*[rR]\b"""), "г")
-                        .replace(Regex("""(?<=\d)\s*[gG]\b"""), "г")
 
-                    // 2. Глубокий поиск веса/объема (например: 200Г, 500 гр, 0.9 л)
-                    if (selectedQuantity.isBlank()) {
-                        val weightMatch = Regex("""(\d{2,4})\s*(?:[гГgGrR]|гр|ГР)(?!\w)""").find(normalizedText)?.groupValues?.get(1)
-                            ?: Regex("""(\d{1,2}(?:[.,]\d{1,3})?)\s*(?:[кКkK][гГgG])(?!\w)""").find(normalizedText)?.groupValues?.get(1)
-                            ?: Regex("""(\d{2,4})\s*(?:[мМmM][лЛlL])(?!\w)""").find(normalizedText)?.groupValues?.get(1)
-
-                        if (weightMatch != null) {
-                            selectedQuantity = weightMatch.replace(',', '.')
-                            selectedUnit = when {
-                                normalizedText.contains(Regex("""[кКkK][гГgG]""")) -> ProductUnit.KILOGRAM
-                                normalizedText.contains(Regex("""[мМmM][лЛlL]""")) -> ProductUnit.MILLILITER
-                                else -> ProductUnit.GRAM
-                            }
-                        }
-                    }
-
-                    // 3. Сбор ВСЕХ чисел в чипсы (с поддержкой копеек и квадратных точек)
+                    // 2. Сбор всех чисел ценника в единую ленту
                     val allNumbers = mutableListOf<String>()
 
-                    // Первым кандидатом идет склеенная цена из UseCase (например, 229.99)
+                    // Первым кандидатом выставляем склеенную цену (например, 229.99)
                     if (selectedPrice.isNotBlank()) {
                         allNumbers.add(selectedPrice)
                     }
 
-                    // Ищем все строчные цены с любыми разделителями (269.99, 229■99, 149-90)
+                    // Числа со спец-разделителями (квадратные точки, тире, запятые)
                     val regexWithSeparators = Regex("""(\d{1,5})\s*[\.,■•·\-–]\s*(\d{2})""")
                     regexWithSeparators.findAll(rawText).forEach { match ->
                         allNumbers.add("${match.groupValues[1]}.${match.groupValues[2]}")
                     }
 
-                    // Добавляем все остальные изолированные числа (200, 269, 229, 15)
+                    // Любые изолированные последовательности цифр
                     val extractedNumbers = Regex("""(\d+(?:[.,]\d+)?)""")
                         .findAll(rawText)
                         .map { it.groupValues[1].replace(',', '.') }
@@ -172,7 +155,7 @@ fun CameraOcrScanner(
 
                     detectedNumbersList = allNumbers.distinct().take(10)
 
-                    // Фокус: если цена найдена, сразу активируем слот количества
+                    // Переключаем фокус на вес, если цена определена автоматически
                     if (selectedPrice.isNotBlank() && selectedQuantity.isBlank()) {
                         activeSlot = SelectedTargetSlot.QUANTITY
                     } else if (selectedPrice.isBlank()) {
@@ -186,6 +169,7 @@ fun CameraOcrScanner(
     val unfreeze: () -> Unit = {
         isFrozen = false
         fullFrozenBitmap = null
+        detectedName = null
         selectedPrice = ""
         selectedQuantity = ""
         selectedUnit = ProductUnit.GRAM
@@ -199,10 +183,14 @@ fun CameraOcrScanner(
             .background(Color.Black)
             .onGloballyPositioned { screenSize = it.size }
     ) {
+        // Видоискатель CameraX
         AndroidView(
             factory = { ctx ->
                 val previewView = PreviewView(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
                 }
                 previewViewRef = previewView
 
@@ -214,7 +202,11 @@ fun CameraOcrScanner(
                     }
                     try {
                         cameraProvider.unbindAll()
-                        cameraInstance = cameraProvider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview)
+                        cameraInstance = cameraProvider.bindToLifecycle(
+                            lifecycleOwner,
+                            CameraSelector.DEFAULT_BACK_CAMERA,
+                            preview
+                        )
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
@@ -238,6 +230,7 @@ fun CameraOcrScanner(
                 }
         )
 
+        // Замороженный стоп-кадр
         if (isFrozen && fullFrozenBitmap != null) {
             Image(
                 bitmap = fullFrozenBitmap!!.asImageBitmap(),
@@ -248,6 +241,7 @@ fun CameraOcrScanner(
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
         }
 
+        // Рамка сканирования по центру экрана
         Box(
             modifier = Modifier
                 .size(width = 320.dp, height = 160.dp)
@@ -268,6 +262,7 @@ fun CameraOcrScanner(
                 )
         )
 
+        // Верхняя панель: закрыть, фонарик, статус
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -312,6 +307,7 @@ fun CameraOcrScanner(
             }
         }
 
+        // Нижняя панель действий и сопоставления
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -323,7 +319,7 @@ fun CameraOcrScanner(
         ) {
             if (!isFrozen) {
                 Text(
-                    text = "Поместите ценник в рамку и нажмите спуск",
+                    text = "Поместите ценник в рамку и нажмите съемку",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.LightGray
                 )
@@ -339,11 +335,11 @@ fun CameraOcrScanner(
                     Box(modifier = Modifier.size(56.dp).clip(CircleShape).border(3.dp, Color.Black, CircleShape))
                 }
             } else {
+                // Слоты: ЦЕНА и КОЛИЧЕСТВО / ВЕС
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Слот: ЦЕНА
                     Surface(
                         onClick = { activeSlot = SelectedTargetSlot.PRICE },
                         shape = RoundedCornerShape(10.dp),
@@ -366,7 +362,6 @@ fun CameraOcrScanner(
                         }
                     }
 
-                    // Слот: КОЛИЧЕСТВО / ВЕС
                     Surface(
                         onClick = { activeSlot = SelectedTargetSlot.QUANTITY },
                         shape = RoundedCornerShape(10.dp),
@@ -392,6 +387,7 @@ fun CameraOcrScanner(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
+                // Лента найденных чисел
                 Text(
                     text = if (activeSlot == SelectedTargetSlot.PRICE) "Нажмите на число, чтобы задать ЦЕНУ:" else "Нажмите на число, чтобы задать ВЕС:",
                     style = MaterialTheme.typography.labelSmall,
@@ -441,6 +437,7 @@ fun CameraOcrScanner(
                     )
                 }
 
+                // Переключатели единиц измерения для слота веса
                 if (activeSlot == SelectedTargetSlot.QUANTITY) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
@@ -468,6 +465,7 @@ fun CameraOcrScanner(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+                // Кнопки управления
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -483,6 +481,7 @@ fun CameraOcrScanner(
                         onClick = {
                             onParsed(
                                 ParsedPriceTag(
+                                    name = detectedName,
                                     price = selectedPrice.ifBlank { null },
                                     quantity = selectedQuantity.ifBlank { null },
                                     unit = if (selectedQuantity.isNotBlank()) selectedUnit else null
