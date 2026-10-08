@@ -127,9 +127,7 @@ fun CompareScreen(
 
                     // Если товар назывался по умолчанию ("Товар 1", "Товар 2"), подставляем найденное имя
                     parsed.name?.let { foundName ->
-                        val currentItem = uiState.items.find { it.id == id }
-                        val isDefaultName = currentItem?.name.isNullOrBlank() || currentItem.name.startsWith("Товар")
-                        if (isDefaultName) {
+                        if (foundName.isNotBlank()) {
                             viewModel.onNameChanged(id, foundName)
                         }
                     }
