@@ -22,15 +22,12 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -38,9 +35,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,19 +73,16 @@ fun CameraOcrScanner(
     var fullFrozenBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
 
-    // Данные для полей (с возможностью редактирования)
+    // Значения слотов
     var detectedName by remember { mutableStateOf<String?>(null) }
     var selectedPrice by remember { mutableStateOf("") }
     var selectedQuantity by remember { mutableStateOf("") }
     var selectedUnit by remember { mutableStateOf(ProductUnit.GRAM) }
 
-    // Активный слот: куда отправлять число при клике на чип
+    // Активный слот: цена или вес
     var activeSlot by remember { mutableStateOf(SelectedTargetSlot.PRICE) }
 
-    // Режим клавиатуры быстрой правки (добавить точку, стереть цифру)
-    var isQuickEditMode by remember { mutableStateOf(false) }
-
-    // Единый список всех найденных чисел на ценнике
+    // Единый пул найденных на ценнике чисел
     var detectedNumbersList by remember { mutableStateOf<List<String>>(emptyList()) }
 
     DisposableEffect(Unit) {
@@ -179,15 +171,33 @@ fun CameraOcrScanner(
         selectedUnit = ProductUnit.GRAM
         detectedNumbersList = emptyList()
         activeSlot = SelectedTargetSlot.PRICE
-        isQuickEditMode = false
     }
 
-    // Вспомогательная функция для быстрой модификации активного числа
-    val updateActiveSlotValue: ((String) -> String) -> Unit = { transform ->
+    // Обработчик нажатия клавиш на встроенном цифровом ряду
+    val onKeyClick: (String) -> Unit = { key ->
+        val currentVal = if (activeSlot == SelectedTargetSlot.PRICE) selectedPrice else selectedQuantity
+        val newVal = when (key) {
+            "⌫" -> if (currentVal.isNotEmpty()) currentVal.dropLast(1) else ""
+            "✕" -> ""
+            "." -> {
+                if (currentVal.contains('.')) currentVal
+                else if (currentVal.isEmpty()) "0."
+                else "$currentVal."
+            }
+            ".99" -> {
+                val integerPart = currentVal.substringBefore('.')
+                if (integerPart.isNotEmpty()) "$integerPart.99" else "0.99"
+            }
+            else -> {
+                // Ввод цифры (с защитой от слишком длинных чисел)
+                if (currentVal.length < 7) currentVal + key else currentVal
+            }
+        }
+
         if (activeSlot == SelectedTargetSlot.PRICE) {
-            selectedPrice = transform(selectedPrice)
+            selectedPrice = newVal
         } else {
-            selectedQuantity = transform(selectedQuantity)
+            selectedQuantity = newVal
         }
     }
 
@@ -252,7 +262,7 @@ fun CameraOcrScanner(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.40f)))
         }
 
         // Рамка сканирования
@@ -321,14 +331,14 @@ fun CameraOcrScanner(
             }
         }
 
-        // Нижняя панель действий и редактирования
+        // Нижняя панель
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(Color.Black.copy(alpha = 0.92f))
                 .navigationBarsPadding()
-                .padding(16.dp),
+                .padding(14.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (!isFrozen) {
@@ -349,105 +359,57 @@ fun CameraOcrScanner(
                     Box(modifier = Modifier.size(56.dp).clip(CircleShape).border(3.dp, Color.Black, CircleShape))
                 }
             } else {
-                // 1. Слоты ЦЕНА и КОЛИЧЕСТВО (с поддержкой прямого редактирования по клику)
+                // 1. Статичные слоты без системных инпутов (выбор тапом)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Слот ЦЕНА
+                    // Слот ЦЕНЫ
                     Surface(
-                        onClick = {
-                            activeSlot = SelectedTargetSlot.PRICE
-                        },
+                        onClick = { activeSlot = SelectedTargetSlot.PRICE },
                         shape = RoundedCornerShape(10.dp),
                         color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.primaryContainer else Color.DarkGray,
+                        border = if (activeSlot == SelectedTargetSlot.PRICE) borderStrokeSelected() else null,
                         modifier = Modifier.weight(1f)
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (activeSlot == SelectedTargetSlot.PRICE) "👉 ЦЕНА (активно)" else "ЦЕНА",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.primary else Color.LightGray
-                                )
-                                Text("✏️", fontSize = 11.sp)
-                            }
+                            Text(
+                                text = if (activeSlot == SelectedTargetSlot.PRICE) "👉 ЦЕНА (активно)" else "ЦЕНА",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.primary else Color.LightGray
+                            )
                             Spacer(modifier = Modifier.height(2.dp))
-                            BasicTextField(
-                                value = selectedPrice,
-                                onValueChange = { selectedPrice = it.replace(',', '.') },
-                                textStyle = TextStyle(
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.onPrimaryContainer else Color.White
-                                ),
-                                cursorBrush = SolidColor(Color.White),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                singleLine = true,
-                                decorationBox = { innerTextField ->
-                                    if (selectedPrice.isEmpty()) {
-                                        Text("— ₽", fontSize = 18.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                                    } else {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            innerTextField()
-                                            Text(" ₽", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }
+                            Text(
+                                text = if (selectedPrice.isNotBlank()) "$selectedPrice ₽" else "— ₽",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.onPrimaryContainer else Color.White
                             )
                         }
                     }
 
-                    // Слот КОЛИЧЕСТВО / ВЕС
+                    // Слот КОЛИЧЕСТВА / ВЕСА
                     Surface(
-                        onClick = {
-                            activeSlot = SelectedTargetSlot.QUANTITY
-                        },
+                        onClick = { activeSlot = SelectedTargetSlot.QUANTITY },
                         shape = RoundedCornerShape(10.dp),
                         color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.primaryContainer else Color.DarkGray,
+                        border = if (activeSlot == SelectedTargetSlot.QUANTITY) borderStrokeSelected() else null,
                         modifier = Modifier.weight(1f)
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (activeSlot == SelectedTargetSlot.QUANTITY) "👉 ВЕС / КОЛ-ВО" else "ВЕС / КОЛ-ВО",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.primary else Color.LightGray
-                                )
-                                Text("✏️", fontSize = 11.sp)
-                            }
+                            Text(
+                                text = if (activeSlot == SelectedTargetSlot.QUANTITY) "👉 ВЕС / КОЛ-ВО (активно)" else "ВЕС / КОЛ-ВО",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.primary else Color.LightGray
+                            )
                             Spacer(modifier = Modifier.height(2.dp))
-                            BasicTextField(
-                                value = selectedQuantity,
-                                onValueChange = { selectedQuantity = it.replace(',', '.') },
-                                textStyle = TextStyle(
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.onPrimaryContainer else Color.White
-                                ),
-                                cursorBrush = SolidColor(Color.White),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                singleLine = true,
-                                decorationBox = { innerTextField ->
-                                    if (selectedQuantity.isEmpty()) {
-                                        Text("—", fontSize = 18.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                                    } else {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            innerTextField()
-                                            Text(" ${selectedUnit.label}", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }
+                            Text(
+                                text = if (selectedQuantity.isNotBlank()) "$selectedQuantity ${selectedUnit.label}" else "—",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.onPrimaryContainer else Color.White
                             )
                         }
                     }
@@ -455,77 +417,75 @@ fun CameraOcrScanner(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 2. БЫСТРЫЕ КНОПКИ ПРАВКИ ЧИСЛА (Точка, Стереть, Добавить копейки)
+                // 2. ВСТРОЕННЫЙ ЦИФРОВОЙ РЯД (Клавиатура больше не нужна)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0").forEach { digit ->
+                        FilledTonalButton(
+                            onClick = { onKeyClick(digit) },
+                            contentPadding = PaddingValues(0.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color.DarkGray.copy(alpha = 0.8f)),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .padding(horizontal = 1.5.dp)
+                        ) {
+                            Text(digit, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Дополнительный ряд быстрых модификаторов (. • .99 • Backspace • Clear)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Быстро:",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.LightGray
-                    )
-
-                    // Вставка точки (например: 22999 -> 229.99 или просто ставит точку в конце)
                     FilledTonalButton(
-                        onClick = {
-                            updateActiveSlotValue { current ->
-                                if (current.contains('.')) current
-                                else if (current.length >= 3) {
-                                    // Авто-вставка точки перед 2 последними цифрами копеек (22999 -> 229.99)
-                                    current.dropLast(2) + "." + current.takeLast(2)
-                                } else {
-                                    if (current.isNotEmpty()) "$current." else "0."
-                                }
-                            }
-                        },
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier.height(32.dp)
+                        onClick = { onKeyClick(".") },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f).height(36.dp)
                     ) {
-                        Text("• Точка", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("• Точка", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    // Быстрая приписка ".99"
-                    FilledTonalButton(
-                        onClick = {
-                            updateActiveSlotValue { current ->
-                                val base = current.substringBefore('.')
-                                if (base.isNotEmpty()) "$base.99" else "0.99"
-                            }
-                        },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        modifier = Modifier.height(32.dp)
-                    ) {
-                        Text(".99", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    if (activeSlot == SelectedTargetSlot.PRICE) {
+                        FilledTonalButton(
+                            onClick = { onKeyClick(".99") },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f).height(36.dp)
+                        ) {
+                            Text(".99", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
 
-                    // Удаление последнего символа (Backspace)
                     FilledTonalButton(
-                        onClick = {
-                            updateActiveSlotValue { current ->
-                                if (current.isNotEmpty()) current.dropLast(1) else ""
-                            }
-                        },
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier.height(32.dp)
+                        onClick = { onKeyClick("⌫") },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f).height(36.dp)
                     ) {
-                        Text("⌫ Стереть", fontSize = 12.sp)
+                        Text("⌫ Стереть", fontSize = 13.sp)
                     }
 
-                    // Очистка поля целиком
                     OutlinedButton(
-                        onClick = { updateActiveSlotValue { "" } },
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        modifier = Modifier.height(32.dp)
+                        onClick = { onKeyClick("✕") },
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.width(44.dp).height(36.dp)
                     ) {
-                        Text("✕", fontSize = 11.sp)
+                        Text("✕", fontSize = 13.sp, color = Color.White)
                     }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 3. Лента распознанных чисел с ценника
+                // 3. Лента распознанных чисел с ценника (в 1 тап)
                 Text(
                     text = if (activeSlot == SelectedTargetSlot.PRICE) "Числа с ценника (кликните для ЦЕНЫ):" else "Числа с ценника (кликните для ВЕСА):",
                     style = MaterialTheme.typography.labelSmall,
@@ -569,7 +529,7 @@ fun CameraOcrScanner(
                     }
                 }
 
-                // 4. Единицы измерения для слота количества
+                // 4. Селектор единиц измерения
                 if (activeSlot == SelectedTargetSlot.QUANTITY) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(
@@ -639,4 +599,9 @@ fun CameraOcrScanner(
             CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         }
     }
+}
+
+@Composable
+private fun borderStrokeSelected(): androidx.compose.foundation.BorderStroke {
+    return androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
 }
