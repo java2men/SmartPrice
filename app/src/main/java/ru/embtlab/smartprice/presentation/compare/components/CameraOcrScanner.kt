@@ -1,5 +1,6 @@
 package ru.embtlab.smartprice.presentation.compare.components
 
+import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.view.ViewGroup
@@ -30,18 +31,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -85,6 +88,25 @@ fun CameraOcrScanner(
 
     // Универсальный флаг ожидания ввода дробной части (копеек для цены или долей для кол-ва)
     var isAwaitingDecimals by remember { mutableStateOf(false) }
+
+    // Определяем, тёмный ли фон у текущей активной темы приложения:
+    // Если яркость поверхности < 0.5, значит активна тёмная тема
+    val isAppDarkTheme = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+
+    DisposableEffect(isAppDarkTheme) {
+        val window = (context as? Activity)?.window
+        val insetsController = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+
+        // 1. Пока открыта камера: фон чёрный -> иконки статус-бара делаем белыми
+        insetsController?.isAppearanceLightStatusBars = false
+
+        onDispose {
+            // 2. При закрытии камеры:
+            // Если тема светлая (isAppDarkTheme == false) -> иконки тёмные (true)
+            // Если тема тёмная  (isAppDarkTheme == true)  -> иконки белые (false)
+            insetsController?.isAppearanceLightStatusBars = !isAppDarkTheme
+        }
+    }
 
     DisposableEffect(Unit) {
         onDispose { recognizer.close() }
