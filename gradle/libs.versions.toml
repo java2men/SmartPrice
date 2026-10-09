@@ -18,7 +18,6 @@ ksp = "2.3.11"
 camerax = "1.6.2"
 mlkitTextRecognition = "16.0.1"
 accompanistPermissions = "0.37.3"
-tesseract4android = "4.9.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -64,8 +63,6 @@ google-mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recog
 
 # Разрешения для Compose
 accompanist-permissions = { group = "com.google.accompanist", name = "accompanist-permissions", version.ref = "accompanistPermissions" }
-
-tesseract4android = { group = "cz.adaptech.tesseract4android", name = "tesseract4android", version.ref = "tesseract4android" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -124,14 +124,6 @@ fun CompareScreen(
             CameraOcrScanner(
                 onParsed = { parsed ->
                     val id = uiState.scanningProductId ?: return@CameraOcrScanner
-
-                    // Если товар назывался по умолчанию ("Товар 1", "Товар 2"), подставляем найденное имя
-                    parsed.name?.let { foundName ->
-                        if (foundName.isNotBlank()) {
-                            viewModel.onNameChanged(id, foundName)
-                        }
-                    }
-
                     parsed.price?.let { viewModel.onPriceChanged(id, it) }
                     parsed.quantity?.let { viewModel.onQuantityChanged(id, it) }
                     parsed.unit?.let { viewModel.onUnitChanged(id, it) }

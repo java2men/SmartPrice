@@ -12,7 +12,6 @@ import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -43,18 +42,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
-import kotlinx.coroutines.launch
-import ru.embtlab.smartprice.data.local.SettingsDataStore
-import ru.embtlab.smartprice.data.local.TesseractManager
 import ru.embtlab.smartprice.domain.model.ParsedPriceTag
-import ru.embtlab.smartprice.domain.model.PriceTagLayoutProfile
 import ru.embtlab.smartprice.domain.model.ProductUnit
 import ru.embtlab.smartprice.domain.usecase.ParsePriceTagUseCase
 
-private enum class SelectedTargetSlot { NAME, PRICE, QUANTITY }
+private enum class SelectedTargetSlot { PRICE, QUANTITY }
 
 @Composable
 fun CameraOcrScanner(
@@ -64,23 +58,9 @@ fun CameraOcrScanner(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val coroutineScope = rememberCoroutineScope()
-    val settingsDataStore = remember { SettingsDataStore(context) }
 
     val parser = remember { ParsePriceTagUseCase() }
     val recognizer = remember { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
-    val tesseract = remember { TesseractManager(context) }
-
-    LaunchedEffect(Unit) {
-        tesseract.init()
-    }
-
-    val profileState by settingsDataStore.priceTagProfileFlow.collectAsState(initial = PriceTagLayoutProfile())
-    var currentLearnedProfile by remember { mutableStateOf(PriceTagLayoutProfile()) }
-
-    LaunchedEffect(profileState) {
-        currentLearnedProfile = profileState
-    }
 
     var cameraInstance by remember { mutableStateOf<Camera?>(null) }
     var previewViewRef by remember { mutableStateOf<PreviewView?>(null) }
@@ -92,76 +72,16 @@ fun CameraOcrScanner(
     var isFrozen by remember { mutableStateOf(false) }
     var fullFrozenBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
-    var isWordsLoading by remember { mutableStateOf(false) }
 
-    var lastVisionText by remember { mutableStateOf<Text?>(null) }
-
-    // Данные карточки
-    var detectedName by remember { mutableStateOf<String?>(null) }
     var selectedPrice by remember { mutableStateOf("") }
     var selectedQuantity by remember { mutableStateOf("") }
     var selectedUnit by remember { mutableStateOf(ProductUnit.GRAM) }
 
     var activeSlot by remember { mutableStateOf(SelectedTargetSlot.PRICE) }
     var detectedNumbersList by remember { mutableStateOf<List<String>>(emptyList()) }
-    var detectedWordsList by remember { mutableStateOf<List<String>>(emptyList()) }
-
-    // Режим последовательной склейки слов
-    var isMergeMode by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
-        onDispose {
-            recognizer.close()
-            tesseract.close()
-        }
-    }
-    
-    // Умная сортировка: русский язык вперед, латиница и шум в конец, без удаления слов
-    fun rankAndSortPhrases(rawList: List<String>): List<String> {
-        val hasCyrillic: (String) -> Boolean = { text ->
-            text.any { it in 'а'..'я' || it in 'А'..'Я' || it == 'ё' || it == 'Ё' }
-        }
-        val hasLatin: (String) -> Boolean = { text ->
-            text.any { it in 'a'..'z' || it in 'A'..'Z' }
-        }
-
-        return rawList
-            .map { it.trim() }
-            .filter { it.isNotBlank() && !it.all { ch -> ch.isDigit() } }
-            .distinct()
-            .sortedWith { a, b ->
-                val aCyr = hasCyrillic(a)
-                val bCyr = hasCyrillic(b)
-                val aLat = hasLatin(a)
-                val bLat = hasLatin(b)
-
-                // 1. Приоритет русским словам перед чисто латинскими
-                val aPriority = when {
-                    aCyr && !aLat -> 3 // Чистая кириллица ("Российский Сыр")
-                    aCyr && aLat  -> 2 // Смешанные (бренд + русский)
-                    else          -> 1 // Латиница / OCR-шум (Ormme- Rp, Ree)
-                }
-                val bPriority = when {
-                    bCyr && !bLat -> 3
-                    bCyr && bLat  -> 2
-                    else          -> 1
-                }
-
-                if (aPriority != bPriority) {
-                    bPriority.compareTo(aPriority) // Высший приоритет идет первым
-                } else {
-                    // 2. Внутри своей группы: сначала длинные фразы из нескольких слов
-                    val aWords = a.split(Regex("""\s+""")).size
-                    val bWords = b.split(Regex("""\s+""")).size
-                    if (aWords != bWords) {
-                        bWords.compareTo(aWords)
-                    } else {
-                        // 3. По общей длине строки
-                        b.length.compareTo(a.length)
-                    }
-                }
-            }
-            .take(20) // Оставляем до 20 кандидатов, чтобы ничего не потерять
+        onDispose { recognizer.close() }
     }
 
     val captureAndFreeze: () -> Unit = {
@@ -173,15 +93,14 @@ fun CameraOcrScanner(
             isProcessing = true
             fullFrozenBitmap = bitmap
             isFrozen = true
-            isMergeMode = false
 
             val scaleX = bitmap.width.toFloat() / screenSize.width.coerceAtLeast(1)
             val scaleY = bitmap.height.toFloat() / screenSize.height.coerceAtLeast(1)
 
-            val cropLeft = ((rect.left * scaleX) - (bitmap.width * 0.04f)).toInt().coerceAtLeast(0)
-            val cropTop = ((rect.top * scaleY) - (bitmap.height * 0.04f)).toInt().coerceAtLeast(0)
-            val cropWidth = ((rect.width() * scaleX) + (bitmap.width * 0.08f)).toInt().coerceAtMost(bitmap.width - cropLeft)
-            val cropHeight = ((rect.height() * scaleY) + (bitmap.height * 0.08f)).toInt().coerceAtMost(bitmap.height - cropTop)
+            val cropLeft = ((rect.left * scaleX) - (bitmap.width * 0.03f)).toInt().coerceAtLeast(0)
+            val cropTop = ((rect.top * scaleY) - (bitmap.height * 0.03f)).toInt().coerceAtLeast(0)
+            val cropWidth = ((rect.width() * scaleX) + (bitmap.width * 0.06f)).toInt().coerceAtMost(bitmap.width - cropLeft)
+            val cropHeight = ((rect.height() * scaleY) + (bitmap.height * 0.06f)).toInt().coerceAtMost(bitmap.height - cropTop)
 
             val croppedBitmap = try {
                 Bitmap.createBitmap(bitmap, cropLeft, cropTop, cropWidth, cropHeight)
@@ -192,15 +111,11 @@ fun CameraOcrScanner(
             val inputImage = InputImage.fromBitmap(croppedBitmap, 0)
             recognizer.process(inputImage)
                 .addOnSuccessListener { visionText ->
-                    lastVisionText = visionText
-
                     val autoParsed = parser.parseFromVisionText(
                         visionText = visionText,
                         frameWidth = croppedBitmap.width,
-                        frameHeight = croppedBitmap.height,
-                        learnedProfile = currentLearnedProfile
+                        frameHeight = croppedBitmap.height
                     )
-
                     selectedPrice = autoParsed.price ?: ""
                     selectedQuantity = autoParsed.quantity ?: ""
                     if (autoParsed.unit != null) {
@@ -219,8 +134,7 @@ fun CameraOcrScanner(
                         allNumbers.add("${match.groupValues[1]}.${match.groupValues[2]}")
                     }
 
-                    val extractedNumbers = Regex("""(\d+(?:[.,]\d+)?)""")
-                        .findAll(rawText)
+                    val rawMatches = Regex("""(\d+(?:[.,]\d+)?)""").findAll(rawText)
                         .map { it.groupValues[1].replace(',', '.') }
                         .filter {
                             val num = it.toDoubleOrNull() ?: 0.0
@@ -228,7 +142,7 @@ fun CameraOcrScanner(
                         }
                         .toList()
 
-                    allNumbers.addAll(extractedNumbers)
+                    allNumbers.addAll(rawMatches)
                     detectedNumbersList = allNumbers.distinct().take(10)
 
                     if (selectedPrice.isNotBlank() && selectedQuantity.isBlank()) {
@@ -237,147 +151,18 @@ fun CameraOcrScanner(
                         activeSlot = SelectedTargetSlot.PRICE
                     }
                 }
-                .addOnCompleteListener {
-                    isProcessing = false
-                }
-
-            // Распознавание Tesseract с умным ранжированием строк и слов
-            coroutineScope.launch {
-                isWordsLoading = true
-                try {
-                    val ocrMixedText = tesseract.recognizeText(croppedBitmap)
-                    val rawCandidates = mutableListOf<String>()
-
-                    if (ocrMixedText.isNotBlank()) {
-                        val rawLines = ocrMixedText.lines()
-                            .map { it.trim() }
-                            .filter { it.length >= 2 && !it.contains(Regex("""\d{10,}""")) }
-
-                        for (line in rawLines) {
-                            val clean = line.replace(Regex("""[^а-яА-ЯёЁa-zA-Z0-9\s\-/]"""), " ").trim()
-                            val tokens = clean.split(Regex("""[\s/]+""")).filter { it.length >= 2 }
-
-                            // 1. Длинная фраза строки целиком
-                            if (tokens.size >= 2) {
-                                val fullPhrase = tokens.take(4).joinToString(" ") { token ->
-                                    token.lowercase().replaceFirstChar { it.uppercase() }
-                                }
-                                rawCandidates.add(fullPhrase)
-
-                                // Подфразы из 2-3 слов
-                                if (tokens.size >= 3) {
-                                    val subPhrase = tokens.take(2).joinToString(" ") { token ->
-                                        token.lowercase().replaceFirstChar { it.uppercase() }
-                                    }
-                                    rawCandidates.add(subPhrase)
-                                }
-                            }
-
-                            // 2. Отдельные слова
-                            tokens.forEach { token ->
-                                if (!token.all { it.isDigit() }) {
-                                    rawCandidates.add(token.lowercase().replaceFirstChar { it.uppercase() })
-                                }
-                            }
-                        }
-                    }
-
-                    val sortedList = rankAndSortPhrases(rawCandidates)
-                    if (sortedList.isNotEmpty()) {
-                        detectedWordsList = sortedList
-                        // На первое место встает самое длинное и читаемое
-                        detectedName = sortedList.first()
-                    } else {
-                        detectedWordsList = listOf("Чипсы", "Печенье", "Шоколад", "Компот", "Сок", "Сыр", "Молоко")
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    detectedWordsList = listOf("Чипсы", "Печенье", "Шоколад", "Компот", "Сок", "Сыр", "Молоко")
-                } finally {
-                    isWordsLoading = false
-                }
-            }
+                .addOnCompleteListener { isProcessing = false }
         }
     }
 
     val unfreeze: () -> Unit = {
         isFrozen = false
         fullFrozenBitmap = null
-        lastVisionText = null
-        detectedName = null
         selectedPrice = ""
         selectedQuantity = ""
         selectedUnit = ProductUnit.GRAM
         detectedNumbersList = emptyList()
-        detectedWordsList = emptyList()
-        isWordsLoading = false
-        isMergeMode = false
         activeSlot = SelectedTargetSlot.PRICE
-    }
-
-    val learnFromUserSelection: (String) -> Unit = { finalPrice ->
-        val vision = lastVisionText
-        if (vision != null && finalPrice.contains('.')) {
-            val rublePart = finalPrice.substringBefore('.')
-            val centsPart = finalPrice.substringAfter('.')
-
-            val allLines = vision.textBlocks.flatMap { it.lines }
-            val rubleBox = allLines.find { it.text.contains(rublePart) }?.boundingBox
-            val centsBox = allLines.find { it.text.contains(centsPart) }?.boundingBox
-
-            if (rubleBox != null && centsBox != null && rubleBox != centsBox) {
-                val observedHeightRatio = centsBox.height().toFloat() / rubleBox.height().coerceAtLeast(1)
-                val observedOffsetRatio = (centsBox.left - rubleBox.right).toFloat() / rubleBox.width().coerceAtLeast(1)
-
-                val updatedProfile = currentLearnedProfile.updateWithSample(
-                    newHeightRatio = observedHeightRatio,
-                    newOffsetRatio = observedOffsetRatio
-                )
-                currentLearnedProfile = updatedProfile
-
-                coroutineScope.launch {
-                    settingsDataStore.savePriceTagProfile(updatedProfile)
-                }
-            }
-        }
-    }
-
-    val onKeyClick: (String) -> Unit = { key ->
-        when (activeSlot) {
-            SelectedTargetSlot.NAME -> {
-                if (key == "⌫") {
-                    val current = detectedName ?: ""
-                    detectedName = if (current.isNotEmpty()) current.dropLast(1).ifBlank { null } else null
-                } else if (key == "✕") {
-                    detectedName = null
-                }
-            }
-            SelectedTargetSlot.PRICE, SelectedTargetSlot.QUANTITY -> {
-                val currentVal = if (activeSlot == SelectedTargetSlot.PRICE) selectedPrice else selectedQuantity
-                val newVal = when (key) {
-                    "⌫" -> if (currentVal.isNotEmpty()) currentVal.dropLast(1) else ""
-                    "✕" -> ""
-                    "." -> {
-                        if (currentVal.contains('.')) currentVal
-                        else if (currentVal.isEmpty()) "0."
-                        else "$currentVal."
-                    }
-                    ".99" -> {
-                        val integerPart = currentVal.substringBefore('.')
-                        if (integerPart.isNotEmpty()) "$integerPart.99" else "0.99"
-                    }
-                    else -> {
-                        if (currentVal.length < 7) currentVal + key else currentVal
-                    }
-                }
-
-                if (activeSlot == SelectedTargetSlot.PRICE) {
-                    selectedPrice = newVal
-                } else {
-                    selectedQuantity = newVal
-                }
-            }
-        }
     }
 
     Box(
@@ -444,7 +229,7 @@ fun CameraOcrScanner(
 
         Box(
             modifier = Modifier
-                .size(width = 320.dp, height = 160.dp)
+                .size(width = 310.dp, height = 150.dp)
                 .align(Alignment.Center)
                 .onGloballyPositioned { coords ->
                     val pos = coords.positionInRoot()
@@ -497,11 +282,7 @@ fun CameraOcrScanner(
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     Text(
-                        text = if (currentLearnedProfile.samplesCount > 0) {
-                            "Профиль: обучен (${currentLearnedProfile.samplesCount})"
-                        } else {
-                            "Кадр зафиксирован"
-                        },
+                        text = "Кадр зафиксирован",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
@@ -516,7 +297,7 @@ fun CameraOcrScanner(
                 .fillMaxWidth()
                 .background(Color.Black.copy(alpha = 0.92f))
                 .navigationBarsPadding()
-                .padding(14.dp),
+                .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (!isFrozen) {
@@ -534,98 +315,51 @@ fun CameraOcrScanner(
                         .clickable { captureAndFreeze() },
                     contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(CircleShape)
-                            .border(3.dp, Color.Black, CircleShape)
-                    )
+                    Box(modifier = Modifier.size(56.dp).clip(CircleShape).border(3.dp, Color.Black, CircleShape))
                 }
             } else {
-                // Слоты ТОВАР, ЦЕНА, ВЕС
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Слот ТОВАР
-                    Surface(
-                        onClick = { activeSlot = SelectedTargetSlot.NAME },
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (activeSlot == SelectedTargetSlot.NAME) MaterialTheme.colorScheme.primaryContainer else Color.DarkGray,
-                        border = if (activeSlot == SelectedTargetSlot.NAME) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
-                        modifier = Modifier.weight(1.25f)
-                    ) {
-                        Column(modifier = Modifier.padding(8.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (activeSlot == SelectedTargetSlot.NAME) "👉 ТОВАР" else "ТОВАР",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (activeSlot == SelectedTargetSlot.NAME) MaterialTheme.colorScheme.primary else Color.LightGray
-                                )
-                                if (activeSlot == SelectedTargetSlot.NAME && isMergeMode) {
-                                    Text("🔗 Склейка", fontSize = 9.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = detectedName?.ifBlank { "—" } ?: "—",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                color = if (activeSlot == SelectedTargetSlot.NAME) MaterialTheme.colorScheme.onPrimaryContainer else Color.White
-                            )
-                        }
-                    }
-
-                    // Слот ЦЕНА
                     Surface(
                         onClick = { activeSlot = SelectedTargetSlot.PRICE },
                         shape = RoundedCornerShape(10.dp),
                         color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.primaryContainer else Color.DarkGray,
-                        border = if (activeSlot == SelectedTargetSlot.PRICE) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
-                        modifier = Modifier.weight(0.95f)
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Column(modifier = Modifier.padding(8.dp)) {
+                        Column(modifier = Modifier.padding(10.dp)) {
                             Text(
-                                text = if (activeSlot == SelectedTargetSlot.PRICE) "👉 ЦЕНА" else "ЦЕНА",
+                                text = if (activeSlot == SelectedTargetSlot.PRICE) "👉 ВЫБОР ЦЕНЫ" else "ЦЕНА",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.primary else Color.LightGray
                             )
-                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = if (selectedPrice.isNotBlank()) "$selectedPrice ₽" else "— ₽",
-                                fontSize = 16.sp,
+                                fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.onPrimaryContainer else Color.White
                             )
                         }
                     }
 
-                    // Слот ВЕС
                     Surface(
                         onClick = { activeSlot = SelectedTargetSlot.QUANTITY },
                         shape = RoundedCornerShape(10.dp),
                         color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.primaryContainer else Color.DarkGray,
-                        border = if (activeSlot == SelectedTargetSlot.QUANTITY) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
-                        modifier = Modifier.weight(0.95f)
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Column(modifier = Modifier.padding(8.dp)) {
+                        Column(modifier = Modifier.padding(10.dp)) {
                             Text(
-                                text = if (activeSlot == SelectedTargetSlot.QUANTITY) "👉 ВЕС" else "ВЕС",
+                                text = if (activeSlot == SelectedTargetSlot.QUANTITY) "👉 ВЫБОР ВЕСА" else "ВЕС / КОЛ-ВО",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.primary else Color.LightGray
                             )
-                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = if (selectedQuantity.isNotBlank()) "$selectedQuantity ${selectedUnit.label}" else "—",
-                                fontSize = 16.sp,
+                                fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.onPrimaryContainer else Color.White
                             )
@@ -635,210 +369,99 @@ fun CameraOcrScanner(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Цифровой ряд 0-9
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0").forEach { digit ->
-                        FilledTonalButton(
-                            onClick = { onKeyClick(digit) },
-                            contentPadding = PaddingValues(0.dp),
-                            shape = RoundedCornerShape(6.dp),
-                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color.DarkGray.copy(alpha = 0.8f)),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(38.dp)
-                                .padding(horizontal = 1.5.dp)
-                        ) {
-                            Text(digit, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        }
-                    }
+                    AssistChip(
+                        onClick = {
+                            if (activeSlot == SelectedTargetSlot.PRICE && selectedPrice.isNotBlank() && !selectedPrice.contains('.')) {
+                                selectedPrice = if (selectedPrice.length >= 3) {
+                                    val rubles = selectedPrice.dropLast(2)
+                                    val cents = selectedPrice.takeLast(2)
+                                    "$rubles.$cents"
+                                } else {
+                                    "$selectedPrice.00"
+                                }
+                            }
+                        },
+                        label = { Text("• Точка", fontSize = 12.sp) }
+                    )
+
+                    AssistChip(
+                        onClick = {
+                            if (activeSlot == SelectedTargetSlot.PRICE && selectedPrice.isNotEmpty()) {
+                                selectedPrice = selectedPrice.dropLast(1)
+                            } else if (activeSlot == SelectedTargetSlot.QUANTITY && selectedQuantity.isNotEmpty()) {
+                                selectedQuantity = selectedQuantity.dropLast(1)
+                            }
+                        },
+                        label = { Text("⌫ Стереть", fontSize = 12.sp) }
+                    )
+
+                    AssistChip(
+                        onClick = {
+                            if (activeSlot == SelectedTargetSlot.PRICE) selectedPrice = ""
+                            else selectedQuantity = ""
+                        },
+                        label = { Text("Очистить", fontSize = 12.sp) }
+                    )
                 }
 
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = if (activeSlot == SelectedTargetSlot.PRICE) "Тапните число для цены:" else "Тапните число для веса:",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.LightGray,
+                    modifier = Modifier.align(Alignment.Start)
+                )
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Панель модификаторов
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    FilledTonalButton(
-                        onClick = { onKeyClick(".") },
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1f).height(36.dp)
-                    ) {
-                        Text("• Точка", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    if (activeSlot == SelectedTargetSlot.PRICE) {
-                        FilledTonalButton(
-                            onClick = { onKeyClick(".99") },
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f).height(36.dp)
-                        ) {
-                            Text(".99", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    FilledTonalButton(
-                        onClick = { onKeyClick("⌫") },
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.weight(1f).height(36.dp)
-                    ) {
-                        Text("⌫ Стереть", fontSize = 13.sp)
-                    }
-
-                    OutlinedButton(
-                        onClick = { onKeyClick("✕") },
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(0.dp),
-                        modifier = Modifier.width(44.dp).height(36.dp)
-                    ) {
-                        Text("✕", fontSize = 13.sp, color = Color.White)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Лента чипсов выбора с поддержкой режима склейки
-                if (activeSlot == SelectedTargetSlot.NAME) {
-                    Row(
+                if (detectedNumbersList.isNotEmpty()) {
+                    LazyRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = if (isMergeMode) "Тапайте слова для склейки:" else "Слова с ценника (лучшее первое):",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.LightGray
-                        )
-
-                        // Кнопка включения режима склейки слов
-                        FilledTonalButton(
-                            onClick = {
-                                isMergeMode = !isMergeMode
-                                if (isMergeMode) {
-                                    // При включении склейки сбрасываем поле для набора по порядку
-                                    detectedName = ""
-                                }
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.filledTonalButtonColors(
-                                containerColor = if (isMergeMode) MaterialTheme.colorScheme.primary else Color.DarkGray
-                            ),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                            modifier = Modifier.height(28.dp)
-                        ) {
-                            Text(
-                                text = if (isMergeMode) "✓ Готово" else "🔗 Склеить",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isMergeMode) MaterialTheme.colorScheme.onPrimary else Color.White
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    if (isWordsLoading) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = "Распознавание текста...",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.LightGray
-                            )
-                        }
-                    } else if (detectedWordsList.isNotEmpty()) {
-                        LazyRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(detectedWordsList) { wordPhrase ->
-                                val isSelected = detectedName?.contains(wordPhrase) == true
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = {
-                                        if (isMergeMode) {
-                                            // В режиме склейки добавляем слово через пробел
-                                            val current = detectedName.orEmpty().trim()
-                                            detectedName = if (current.isEmpty()) wordPhrase else "$current $wordPhrase"
-                                        } else {
-                                            // В обычном режиме выбираем слово целиком
-                                            detectedName = wordPhrase
-                                            if (selectedPrice.isBlank()) activeSlot = SelectedTargetSlot.PRICE
-                                        }
-                                    },
-                                    label = { Text(wordPhrase, fontWeight = FontWeight.Bold) }
-                                )
+                        items(detectedNumbersList) { number ->
+                            val isSelected = when (activeSlot) {
+                                SelectedTargetSlot.PRICE -> selectedPrice == number
+                                SelectedTargetSlot.QUANTITY -> selectedQuantity == number
                             }
+
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    if (activeSlot == SelectedTargetSlot.PRICE) {
+                                        selectedPrice = number
+                                        if (selectedQuantity.isBlank()) {
+                                            activeSlot = SelectedTargetSlot.QUANTITY
+                                        }
+                                    } else {
+                                        selectedQuantity = number
+                                    }
+                                },
+                                label = {
+                                    Text(
+                                        text = if (activeSlot == SelectedTargetSlot.PRICE) "$number ₽" else number,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            )
                         }
-                    } else {
-                        Text(
-                            text = "Слова не распознаны",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.Gray
-                        )
                     }
                 } else {
                     Text(
-                        text = if (activeSlot == SelectedTargetSlot.PRICE) "Числа с ценника (кликните для ЦЕНЫ):" else "Числа с ценника (кликните для ВЕСА):",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.LightGray,
-                        modifier = Modifier.align(Alignment.Start)
+                        text = "Числа не обнаружены",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    if (detectedNumbersList.isNotEmpty()) {
-                        LazyRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(detectedNumbersList) { number ->
-                                val isSelected = when (activeSlot) {
-                                    SelectedTargetSlot.PRICE -> selectedPrice == number
-                                    SelectedTargetSlot.QUANTITY -> selectedQuantity == number
-                                    else -> false
-                                }
-
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = {
-                                        if (activeSlot == SelectedTargetSlot.PRICE) {
-                                            selectedPrice = number
-                                            if (selectedQuantity.isBlank()) {
-                                                activeSlot = SelectedTargetSlot.QUANTITY
-                                            }
-                                        } else {
-                                            selectedQuantity = number
-                                        }
-                                    },
-                                    label = {
-                                        Text(
-                                            text = if (activeSlot == SelectedTargetSlot.PRICE) "$number ₽" else number,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp
-                                        )
-                                    }
-                                )
-                            }
-                        }
-                    }
                 }
 
                 if (activeSlot == SelectedTargetSlot.QUANTITY) {
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.Start),
@@ -856,7 +479,7 @@ fun CameraOcrScanner(
                                 selected = selectedUnit == unit,
                                 onClick = { selectedUnit = unit },
                                 label = { Text(unit.label, fontSize = 11.sp) },
-                                modifier = Modifier.height(30.dp)
+                                modifier = Modifier.height(32.dp)
                             )
                         }
                     }
@@ -877,10 +500,8 @@ fun CameraOcrScanner(
 
                     Button(
                         onClick = {
-                            learnFromUserSelection(selectedPrice)
                             onParsed(
                                 ParsedPriceTag(
-                                    name = detectedName,
                                     price = selectedPrice.ifBlank { null },
                                     quantity = selectedQuantity.ifBlank { null },
                                     unit = if (selectedQuantity.isNotBlank()) selectedUnit else null
@@ -888,7 +509,7 @@ fun CameraOcrScanner(
                             )
                             onClose()
                         },
-                        enabled = selectedPrice.isNotBlank() || selectedQuantity.isNotBlank() || !detectedName.isNullOrBlank(),
+                        enabled = selectedPrice.isNotBlank() || selectedQuantity.isNotBlank(),
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("Применить")
