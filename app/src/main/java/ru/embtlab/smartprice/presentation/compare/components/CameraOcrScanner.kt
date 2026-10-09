@@ -57,7 +57,6 @@ fun CameraOcrScanner(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // 1. Системная кнопка "Назад" теперь закрывает сканер, а не приложение
     BackHandler(onBack = onClose)
 
     val context = LocalContext.current
@@ -73,12 +72,10 @@ fun CameraOcrScanner(
     var screenSize by remember { mutableStateOf(IntSize.Zero) }
     var frameRectOnScreen by remember { mutableStateOf<Rect?>(null) }
 
-    // Режим фиксации кадра
     var isFrozen by remember { mutableStateOf(false) }
     var fullFrozenBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
 
-    // Значения
     var selectedPrice by remember { mutableStateOf("") }
     var selectedQuantity by remember { mutableStateOf("") }
     var selectedUnit by remember { mutableStateOf(ProductUnit.GRAM) }
@@ -86,27 +83,49 @@ fun CameraOcrScanner(
     var activeSlot by remember { mutableStateOf(SelectedTargetSlot.PRICE) }
     var detectedNumbersList by remember { mutableStateOf<List<String>>(emptyList()) }
 
+    // Универсальный флаг ожидания ввода дробной части (копеек для цены или долей для кол-ва)
+    var isAwaitingDecimals by remember { mutableStateOf(false) }
+
     DisposableEffect(Unit) {
         onDispose { recognizer.close() }
     }
 
     val onKeyClick: (String) -> Unit = { key ->
         val currentVal = if (activeSlot == SelectedTargetSlot.PRICE) selectedPrice else selectedQuantity
+        val maxDecimals = if (activeSlot == SelectedTargetSlot.PRICE) 2 else 3
+
         val newVal = when (key) {
-            "⌫" -> if (currentVal.isNotEmpty()) currentVal.dropLast(1) else ""
-            "C" -> ""
+            "⌫" -> {
+                val res = if (currentVal.isNotEmpty()) currentVal.dropLast(1) else ""
+                if (!res.contains('.')) isAwaitingDecimals = false
+                res
+            }
+            "C" -> {
+                isAwaitingDecimals = false
+                ""
+            }
             "." -> {
-                // Добавляет точку строго в конец (без разбиения по середине)
-                if (currentVal.contains('.')) currentVal
-                else if (currentVal.isEmpty()) "0."
-                else "$currentVal."
+                if (currentVal.contains('.')) {
+                    currentVal
+                } else {
+                    isAwaitingDecimals = true
+                    if (currentVal.isEmpty()) "0." else "$currentVal."
+                }
             }
             ".99" -> {
+                isAwaitingDecimals = false
                 val integerPart = currentVal.substringBefore('.')
                 if (integerPart.isNotEmpty()) "$integerPart.99" else "0.99"
             }
             else -> {
-                if (currentVal.length < 7) currentVal + key else currentVal
+                if (isAwaitingDecimals) {
+                    val base = currentVal.substringBefore('.')
+                    val frac = currentVal.substringAfter('.', "") + key
+                    if (frac.length >= maxDecimals) isAwaitingDecimals = false
+                    "$base.${frac.take(maxDecimals)}"
+                } else {
+                    if (currentVal.length < 7) currentVal + key else currentVal
+                }
             }
         }
 
@@ -126,6 +145,8 @@ fun CameraOcrScanner(
             isProcessing = true
             fullFrozenBitmap = bitmap
             isFrozen = true
+            isAwaitingDecimals = false
+            activeSlot = SelectedTargetSlot.PRICE
 
             val scaleX = bitmap.width.toFloat() / screenSize.width.coerceAtLeast(1)
             val scaleY = bitmap.height.toFloat() / screenSize.height.coerceAtLeast(1)
@@ -177,12 +198,6 @@ fun CameraOcrScanner(
 
                     allNumbers.addAll(rawMatches)
                     detectedNumbersList = allNumbers.distinct().take(10)
-
-                    if (selectedPrice.isNotBlank() && selectedQuantity.isBlank()) {
-                        activeSlot = SelectedTargetSlot.QUANTITY
-                    } else if (selectedPrice.isBlank()) {
-                        activeSlot = SelectedTargetSlot.PRICE
-                    }
                 }
                 .addOnCompleteListener { isProcessing = false }
         }
@@ -196,6 +211,7 @@ fun CameraOcrScanner(
         selectedUnit = ProductUnit.GRAM
         detectedNumbersList = emptyList()
         activeSlot = SelectedTargetSlot.PRICE
+        isAwaitingDecimals = false
     }
 
     Box(
@@ -204,7 +220,6 @@ fun CameraOcrScanner(
             .background(Color.Black)
             .onGloballyPositioned { screenSize = it.size }
     ) {
-        // Видоискатель CameraX
         AndroidView(
             factory = { ctx ->
                 val previewView = PreviewView(ctx).apply {
@@ -251,7 +266,6 @@ fun CameraOcrScanner(
                 }
         )
 
-        // Стоп-кадр
         if (isFrozen && fullFrozenBitmap != null) {
             Image(
                 bitmap = fullFrozenBitmap!!.asImageBitmap(),
@@ -262,7 +276,6 @@ fun CameraOcrScanner(
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.40f)))
         }
 
-        // Центральная рамка захвата ценника
         Box(
             modifier = Modifier
                 .size(width = 310.dp, height = 150.dp)
@@ -283,7 +296,6 @@ fun CameraOcrScanner(
                 )
         )
 
-        // Верхняя панель инструментов
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -328,7 +340,6 @@ fun CameraOcrScanner(
             }
         }
 
-        // Нижняя консоль выбора и редактирования
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -356,13 +367,18 @@ fun CameraOcrScanner(
                     Box(modifier = Modifier.size(56.dp).clip(CircleShape).border(3.dp, Color.Black, CircleShape))
                 }
             } else {
-                // Слоты ЦЕНА и ВЕС
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // Слот ЦЕНА
                     Surface(
-                        onClick = { activeSlot = SelectedTargetSlot.PRICE },
+                        onClick = {
+                            if (activeSlot != SelectedTargetSlot.PRICE) {
+                                activeSlot = SelectedTargetSlot.PRICE
+                                isAwaitingDecimals = false
+                            }
+                        },
                         shape = RoundedCornerShape(10.dp),
                         color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2E),
                         border = if (activeSlot == SelectedTargetSlot.PRICE) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
@@ -370,7 +386,9 @@ fun CameraOcrScanner(
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Text(
-                                text = if (activeSlot == SelectedTargetSlot.PRICE) "👉 ВЫБОР ЦЕНЫ" else "ЦЕНА",
+                                text = if (activeSlot == SelectedTargetSlot.PRICE) {
+                                    if (isAwaitingDecimals) "👉 КОПЕЙКИ" else "👉 ВЫБОР ЦЕНЫ"
+                                } else "ЦЕНА",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.primary else Color.LightGray
@@ -384,8 +402,14 @@ fun CameraOcrScanner(
                         }
                     }
 
+                    // Слот КОЛИЧЕСТВО
                     Surface(
-                        onClick = { activeSlot = SelectedTargetSlot.QUANTITY },
+                        onClick = {
+                            if (activeSlot != SelectedTargetSlot.QUANTITY) {
+                                activeSlot = SelectedTargetSlot.QUANTITY
+                                isAwaitingDecimals = false
+                            }
+                        },
                         shape = RoundedCornerShape(10.dp),
                         color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2E),
                         border = if (activeSlot == SelectedTargetSlot.QUANTITY) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
@@ -393,7 +417,9 @@ fun CameraOcrScanner(
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Text(
-                                text = if (activeSlot == SelectedTargetSlot.QUANTITY) "👉 ВЫБОР ВЕСА" else "ВЕС / КОЛ-ВО",
+                                text = if (activeSlot == SelectedTargetSlot.QUANTITY) {
+                                    if (isAwaitingDecimals) "👉 ДРОБНАЯ ЧАСТЬ" else "👉 ВЫБОР КОЛ-ВА"
+                                } else "КОЛ-ВО",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.primary else Color.LightGray
@@ -410,7 +436,6 @@ fun CameraOcrScanner(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Ряд цифровых чипсов (0-9)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -437,7 +462,6 @@ fun CameraOcrScanner(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Модификаторы: Точка в конец, .99, Стереть, Очистить
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -446,7 +470,10 @@ fun CameraOcrScanner(
                     FilledTonalButton(
                         onClick = { onKeyClick(".") },
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFF3A3A3C), contentColor = Color.White),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = if (isAwaitingDecimals) MaterialTheme.colorScheme.primary else Color(0xFF3A3A3C),
+                            contentColor = if (isAwaitingDecimals) MaterialTheme.colorScheme.onPrimary else Color.White
+                        ),
                         modifier = Modifier.weight(1f).height(36.dp)
                     ) {
                         Text("• Точка", fontSize = 13.sp, fontWeight = FontWeight.Bold)
@@ -484,11 +511,19 @@ fun CameraOcrScanner(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Лента найденных чисел с контрастными читабельными чипсами
+                // Динамическая подсказка в зависимости от слота и режима точки
+                val promptText = when {
+                    activeSlot == SelectedTargetSlot.PRICE && isAwaitingDecimals -> "Тапните число для копеек (после точки):"
+                    activeSlot == SelectedTargetSlot.QUANTITY && isAwaitingDecimals -> "Тапните число для дробной части (после точки):"
+                    activeSlot == SelectedTargetSlot.PRICE -> "Тапните число для цены:"
+                    else -> "Тапните число для количества:"
+                }
+
                 Text(
-                    text = if (activeSlot == SelectedTargetSlot.PRICE) "Тапните число для цены:" else "Тапните число для веса:",
+                    text = promptText,
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.LightGray,
+                    color = if (isAwaitingDecimals) MaterialTheme.colorScheme.primary else Color.LightGray,
+                    fontWeight = if (isAwaitingDecimals) FontWeight.Bold else FontWeight.Normal,
                     modifier = Modifier.align(Alignment.Start)
                 )
                 Spacer(modifier = Modifier.height(6.dp))
@@ -500,30 +535,52 @@ fun CameraOcrScanner(
                     ) {
                         items(detectedNumbersList) { number ->
                             val isSelected = when (activeSlot) {
-                                SelectedTargetSlot.PRICE -> selectedPrice == number
-                                SelectedTargetSlot.QUANTITY -> selectedQuantity == number
+                                SelectedTargetSlot.PRICE -> {
+                                    if (isAwaitingDecimals) {
+                                        selectedPrice.substringAfter('.', "") == number.filter { it.isDigit() }.take(2)
+                                    } else {
+                                        selectedPrice == number
+                                    }
+                                }
+                                SelectedTargetSlot.QUANTITY -> {
+                                    if (isAwaitingDecimals) {
+                                        selectedQuantity.substringAfter('.', "") == number.filter { it.isDigit() }.take(3)
+                                    } else {
+                                        selectedQuantity == number
+                                    }
+                                }
                             }
 
                             FilterChip(
                                 selected = isSelected,
                                 onClick = {
-                                    if (activeSlot == SelectedTargetSlot.PRICE) {
-                                        selectedPrice = number
-                                        if (selectedQuantity.isBlank()) {
-                                            activeSlot = SelectedTargetSlot.QUANTITY
+                                    if (isAwaitingDecimals) {
+                                        val digitsOnly = number.filter { it.isDigit() }
+                                        if (activeSlot == SelectedTargetSlot.PRICE) {
+                                            val centsPart = digitsOnly.take(2)
+                                            val rublesPart = selectedPrice.substringBefore('.')
+                                            selectedPrice = "$rublesPart.$centsPart"
+                                        } else {
+                                            val fracPart = digitsOnly.take(3)
+                                            val wholePart = selectedQuantity.substringBefore('.')
+                                            selectedQuantity = "$wholePart.$fracPart"
                                         }
+                                        isAwaitingDecimals = false
                                     } else {
-                                        selectedQuantity = number
+                                        if (activeSlot == SelectedTargetSlot.PRICE) {
+                                            selectedPrice = number
+                                        } else {
+                                            selectedQuantity = number
+                                        }
                                     }
                                 },
                                 label = {
                                     Text(
-                                        text = if (activeSlot == SelectedTargetSlot.PRICE) "$number ₽" else number,
+                                        text = if (activeSlot == SelectedTargetSlot.PRICE && !isAwaitingDecimals) "$number ₽" else number,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 15.sp
                                     )
                                 },
-                                // Контрастные светлые цвета чипсов
                                 colors = FilterChipDefaults.filterChipColors(
                                     containerColor = Color(0xFF2C2C2E),
                                     labelColor = Color.White,
@@ -547,7 +604,6 @@ fun CameraOcrScanner(
                     )
                 }
 
-                // Единицы измерения для количества
                 if (activeSlot == SelectedTargetSlot.QUANTITY) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
