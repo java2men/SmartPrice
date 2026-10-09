@@ -3,6 +3,7 @@ package ru.embtlab.smartprice.presentation.compare.components
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.view.ViewGroup
+import androidx.activity.compose.BackHandler
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
@@ -56,6 +57,9 @@ fun CameraOcrScanner(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // 1. Системная кнопка "Назад" теперь закрывает сканер, а не приложение
+    BackHandler(onBack = onClose)
+
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -69,10 +73,12 @@ fun CameraOcrScanner(
     var screenSize by remember { mutableStateOf(IntSize.Zero) }
     var frameRectOnScreen by remember { mutableStateOf<Rect?>(null) }
 
+    // Режим фиксации кадра
     var isFrozen by remember { mutableStateOf(false) }
     var fullFrozenBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
 
+    // Значения
     var selectedPrice by remember { mutableStateOf("") }
     var selectedQuantity by remember { mutableStateOf("") }
     var selectedUnit by remember { mutableStateOf(ProductUnit.GRAM) }
@@ -82,6 +88,33 @@ fun CameraOcrScanner(
 
     DisposableEffect(Unit) {
         onDispose { recognizer.close() }
+    }
+
+    val onKeyClick: (String) -> Unit = { key ->
+        val currentVal = if (activeSlot == SelectedTargetSlot.PRICE) selectedPrice else selectedQuantity
+        val newVal = when (key) {
+            "⌫" -> if (currentVal.isNotEmpty()) currentVal.dropLast(1) else ""
+            "C" -> ""
+            "." -> {
+                // Добавляет точку строго в конец (без разбиения по середине)
+                if (currentVal.contains('.')) currentVal
+                else if (currentVal.isEmpty()) "0."
+                else "$currentVal."
+            }
+            ".99" -> {
+                val integerPart = currentVal.substringBefore('.')
+                if (integerPart.isNotEmpty()) "$integerPart.99" else "0.99"
+            }
+            else -> {
+                if (currentVal.length < 7) currentVal + key else currentVal
+            }
+        }
+
+        if (activeSlot == SelectedTargetSlot.PRICE) {
+            selectedPrice = newVal
+        } else {
+            selectedQuantity = newVal
+        }
     }
 
     val captureAndFreeze: () -> Unit = {
@@ -171,6 +204,7 @@ fun CameraOcrScanner(
             .background(Color.Black)
             .onGloballyPositioned { screenSize = it.size }
     ) {
+        // Видоискатель CameraX
         AndroidView(
             factory = { ctx ->
                 val previewView = PreviewView(ctx).apply {
@@ -217,6 +251,7 @@ fun CameraOcrScanner(
                 }
         )
 
+        // Стоп-кадр
         if (isFrozen && fullFrozenBitmap != null) {
             Image(
                 bitmap = fullFrozenBitmap!!.asImageBitmap(),
@@ -227,6 +262,7 @@ fun CameraOcrScanner(
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.40f)))
         }
 
+        // Центральная рамка захвата ценника
         Box(
             modifier = Modifier
                 .size(width = 310.dp, height = 150.dp)
@@ -247,6 +283,7 @@ fun CameraOcrScanner(
                 )
         )
 
+        // Верхняя панель инструментов
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -291,13 +328,14 @@ fun CameraOcrScanner(
             }
         }
 
+        // Нижняя консоль выбора и редактирования
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .background(Color.Black.copy(alpha = 0.92f))
+                .background(Color.Black.copy(alpha = 0.94f))
                 .navigationBarsPadding()
-                .padding(16.dp),
+                .padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             if (!isFrozen) {
@@ -318,6 +356,7 @@ fun CameraOcrScanner(
                     Box(modifier = Modifier.size(56.dp).clip(CircleShape).border(3.dp, Color.Black, CircleShape))
                 }
             } else {
+                // Слоты ЦЕНА и ВЕС
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -325,13 +364,14 @@ fun CameraOcrScanner(
                     Surface(
                         onClick = { activeSlot = SelectedTargetSlot.PRICE },
                         shape = RoundedCornerShape(10.dp),
-                        color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.primaryContainer else Color.DarkGray,
+                        color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2E),
+                        border = if (activeSlot == SelectedTargetSlot.PRICE) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
                         modifier = Modifier.weight(1f)
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Text(
                                 text = if (activeSlot == SelectedTargetSlot.PRICE) "👉 ВЫБОР ЦЕНЫ" else "ЦЕНА",
-                                fontSize = 10.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (activeSlot == SelectedTargetSlot.PRICE) MaterialTheme.colorScheme.primary else Color.LightGray
                             )
@@ -347,13 +387,14 @@ fun CameraOcrScanner(
                     Surface(
                         onClick = { activeSlot = SelectedTargetSlot.QUANTITY },
                         shape = RoundedCornerShape(10.dp),
-                        color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.primaryContainer else Color.DarkGray,
+                        color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.primaryContainer else Color(0xFF2C2C2E),
+                        border = if (activeSlot == SelectedTargetSlot.QUANTITY) androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
                         modifier = Modifier.weight(1f)
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Text(
                                 text = if (activeSlot == SelectedTargetSlot.QUANTITY) "👉 ВЫБОР ВЕСА" else "ВЕС / КОЛ-ВО",
-                                fontSize = 10.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (activeSlot == SelectedTargetSlot.QUANTITY) MaterialTheme.colorScheme.primary else Color.LightGray
                             )
@@ -369,48 +410,81 @@ fun CameraOcrScanner(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
+                // Ряд цифровых чипсов (0-9)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    AssistChip(
-                        onClick = {
-                            if (activeSlot == SelectedTargetSlot.PRICE && selectedPrice.isNotBlank() && !selectedPrice.contains('.')) {
-                                selectedPrice = if (selectedPrice.length >= 3) {
-                                    val rubles = selectedPrice.dropLast(2)
-                                    val cents = selectedPrice.takeLast(2)
-                                    "$rubles.$cents"
-                                } else {
-                                    "$selectedPrice.00"
-                                }
-                            }
-                        },
-                        label = { Text("• Точка", fontSize = 12.sp) }
-                    )
+                    listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0").forEach { digit ->
+                        FilledTonalButton(
+                            onClick = { onKeyClick(digit) },
+                            contentPadding = PaddingValues(0.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = Color(0xFF3A3A3C),
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .padding(horizontal = 1.5.dp)
+                        ) {
+                            Text(digit, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
 
-                    AssistChip(
-                        onClick = {
-                            if (activeSlot == SelectedTargetSlot.PRICE && selectedPrice.isNotEmpty()) {
-                                selectedPrice = selectedPrice.dropLast(1)
-                            } else if (activeSlot == SelectedTargetSlot.QUANTITY && selectedQuantity.isNotEmpty()) {
-                                selectedQuantity = selectedQuantity.dropLast(1)
-                            }
-                        },
-                        label = { Text("⌫ Стереть", fontSize = 12.sp) }
-                    )
+                Spacer(modifier = Modifier.height(6.dp))
 
-                    AssistChip(
-                        onClick = {
-                            if (activeSlot == SelectedTargetSlot.PRICE) selectedPrice = ""
-                            else selectedQuantity = ""
-                        },
-                        label = { Text("Очистить", fontSize = 12.sp) }
-                    )
+                // Модификаторы: Точка в конец, .99, Стереть, Очистить
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilledTonalButton(
+                        onClick = { onKeyClick(".") },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFF3A3A3C), contentColor = Color.White),
+                        modifier = Modifier.weight(1f).height(36.dp)
+                    ) {
+                        Text("• Точка", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    if (activeSlot == SelectedTargetSlot.PRICE) {
+                        FilledTonalButton(
+                            onClick = { onKeyClick(".99") },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFF3A3A3C), contentColor = Color.White),
+                            modifier = Modifier.weight(1f).height(36.dp)
+                        ) {
+                            Text(".99", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    FilledTonalButton(
+                        onClick = { onKeyClick("⌫") },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFF3A3A3C), contentColor = Color.White),
+                        modifier = Modifier.weight(1f).height(36.dp)
+                    ) {
+                        Text("⌫ Стереть", fontSize = 13.sp)
+                    }
+
+                    FilledTonalButton(
+                        onClick = { onKeyClick("C") },
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFF48484A), contentColor = Color.White),
+                        modifier = Modifier.weight(0.9f).height(36.dp)
+                    ) {
+                        Text("Очистить", fontSize = 12.sp)
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // Лента найденных чисел с контрастными читабельными чипсами
                 Text(
                     text = if (activeSlot == SelectedTargetSlot.PRICE) "Тапните число для цены:" else "Тапните число для веса:",
                     style = MaterialTheme.typography.labelSmall,
@@ -446,9 +520,22 @@ fun CameraOcrScanner(
                                     Text(
                                         text = if (activeSlot == SelectedTargetSlot.PRICE) "$number ₽" else number,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp
+                                        fontSize = 15.sp
                                     )
-                                }
+                                },
+                                // Контрастные светлые цвета чипсов
+                                colors = FilterChipDefaults.filterChipColors(
+                                    containerColor = Color(0xFF2C2C2E),
+                                    labelColor = Color.White,
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                border = FilterChipDefaults.filterChipBorder(
+                                    enabled = true,
+                                    selected = isSelected,
+                                    borderColor = Color(0xFF545458),
+                                    selectedBorderColor = MaterialTheme.colorScheme.primary
+                                )
                             )
                         }
                     }
@@ -460,6 +547,7 @@ fun CameraOcrScanner(
                     )
                 }
 
+                // Единицы измерения для количества
                 if (activeSlot == SelectedTargetSlot.QUANTITY) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
@@ -478,7 +566,19 @@ fun CameraOcrScanner(
                             FilterChip(
                                 selected = selectedUnit == unit,
                                 onClick = { selectedUnit = unit },
-                                label = { Text(unit.label, fontSize = 11.sp) },
+                                label = { Text(unit.label, fontSize = 12.sp) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    containerColor = Color(0xFF2C2C2E),
+                                    labelColor = Color.White,
+                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                border = FilterChipDefaults.filterChipBorder(
+                                    enabled = true,
+                                    selected = selectedUnit == unit,
+                                    borderColor = Color(0xFF545458),
+                                    selectedBorderColor = MaterialTheme.colorScheme.primary
+                                ),
                                 modifier = Modifier.height(32.dp)
                             )
                         }
