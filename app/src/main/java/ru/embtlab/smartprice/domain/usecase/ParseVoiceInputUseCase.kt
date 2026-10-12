@@ -14,26 +14,29 @@ class ParseVoiceInputUseCase {
         listOf("шт", "штука", "штуки", "штук", "упаковка", "пачка") to ProductUnit.PIECE
     )
 
-    private val wordNumbers = mapOf(
-        "ноль" to 0.0, "один" to 1.0, "одна" to 1.0, "два" to 2.0, "две" to 2.0,
-        "три" to 3.0, "четыре" to 4.0, "пять" to 5.0, "шесть" to 6.0, "семь" to 7.0,
-        "восемь" to 8.0, "девять" to 9.0, "десять" to 10.0, "полтора" to 1.5, "полкило" to 500.0
+    private val wordReplacements = mapOf(
+        "ноль" to "0", "один" to "1", "одна" to "1", "два" to "2", "две" to "2",
+        "три" to "3", "четыре" to "4", "пять" to "5", "шесть" to "6", "семь" to "7",
+        "восемь" to "8", "девять" to "9", "десять" to "10",
+        "полтора" to "1.5", "полкило" to "500", "пол-литра" to "0.5"
     )
 
     operator fun invoke(rawSpokenText: String): ParsedVoiceInput {
-        var cleanText = rawSpokenText.lowercase().trim().replace(',', '.')
+        if (rawSpokenText.isBlank()) return ParsedVoiceInput()
 
-        // Преобразование частых слов в числа
-        wordNumbers.forEach { (word, value) ->
-            cleanText = cleanText.replace(Regex("""\b$word\b"""), if (value % 1.0 == 0.0) value.toInt().toString() else value.toString())
+        var text = rawSpokenText.lowercase().trim().replace(',', '.')
+
+        // Преобразование текстовых числительных
+        wordReplacements.forEach { (word, replacement) ->
+            text = text.replace(Regex("""\b$word\b"""), replacement)
         }
 
-        // Поиск единиц измерения
+        // 1. Поиск единицы измерения
         var detectedUnit: ProductUnit? = null
         for ((tokens, unit) in unitsMap) {
             val matched = tokens.any { token ->
-                Regex("""(?:\b|(?<=\d))$token\b""").containsMatchIn(cleanText) ||
-                        cleanText.split(Regex("""\s+""")).any { FuzzyMatcher.matchesAny(it, listOf(token), 0.8) }
+                Regex("""(?:\b|(?<=\d))$token\b""").containsMatchIn(text) ||
+                        text.split(Regex("""\s+""")).any { FuzzyMatcher.matchesAny(it, listOf(token), 0.82) }
             }
             if (matched) {
                 detectedUnit = unit
@@ -41,27 +44,54 @@ class ParseVoiceInputUseCase {
             }
         }
 
-        // Извлечение чисел
-        val numberMatches = Regex("""\b\d+(?:\.\d+)?\b""").findAll(cleanText).map { it.value }.toList()
+        // Если в речи прозвучало слово "полкило", а единица не определилась явно
+        if (rawSpokenText.contains("полкило", ignoreCase = true) && detectedUnit == null) {
+            detectedUnit = ProductUnit.GRAM
+        }
 
-        val price: String? = numberMatches.getOrNull(0)
-        val quantity: String? = numberMatches.getOrNull(1)
+        // 2. Извлечение чисел
+        val numberRegex = Regex("""\b\d+(?:\.\d+)?\b""")
+        val allNumbers = numberRegex.findAll(text).map { it.value }.toList()
 
-        // Извлечение возможного названия товара (слова до первого числа)
-        val wordsBeforeNumbers = cleanText.substringBefore(price ?: "").trim()
-            .split(Regex("""\s+"""))
-            .filter { word ->
-                word.length > 2 && word !in listOf("цена", "рублей", "руб", "купи", "за", "по", "товар")
+        var detectedPrice: String? = null
+        var detectedQuantity: String? = null
+
+        if (allNumbers.size >= 2) {
+            // При двух числах: первое — цена, второе — вес
+            detectedPrice = allNumbers[0]
+            detectedQuantity = allNumbers[1]
+        } else if (allNumbers.size == 1) {
+            val singleNumber = allNumbers[0]
+            val isExplicitWeight = detectedUnit != null && (
+                    text.contains(Regex("""$singleNumber\s*(г|гр|грамм|кг|мл|л|шт)""")) ||
+                            !text.contains(Regex("""(руб|₽|цена|по|за)"""))
+                    )
+
+            if (isExplicitWeight && detectedUnit != null) {
+                detectedQuantity = singleNumber
+            } else {
+                detectedPrice = singleNumber
             }
-        val detectedName = if (wordsBeforeNumbers.isNotEmpty()) {
-            wordsBeforeNumbers.joinToString(" ").replaceFirstChar { it.uppercase() }
+        }
+
+        // 3. Выделение названия товара (слова перед числами/валютой)
+        val firstNumIndex = if (allNumbers.isNotEmpty()) text.indexOf(allNumbers.first()) else -1
+        val rawPrefix = if (firstNumIndex > 0) text.substring(0, firstNumIndex) else text
+
+        val stopWords = setOf("цена", "рублей", "руб", "купи", "за", "по", "товар", "стоит", "возьми")
+        val candidateWords = rawPrefix.split(Regex("""\s+"""))
+            .map { it.filter { char -> char.isLetter() } }
+            .filter { it.length >= 3 && it !in stopWords }
+
+        val detectedName = if (candidateWords.isNotEmpty()) {
+            candidateWords.joinToString(" ").replaceFirstChar { it.uppercase() }
         } else null
 
         return ParsedVoiceInput(
             name = detectedName,
-            price = price,
-            quantity = quantity,
-            unit = detectedUnit ?: if (quantity != null) ProductUnit.GRAM else null
+            price = detectedPrice,
+            quantity = detectedQuantity,
+            unit = detectedUnit ?: if (detectedQuantity != null) ProductUnit.GRAM else null
         )
     }
 }

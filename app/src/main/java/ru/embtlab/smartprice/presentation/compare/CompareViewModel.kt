@@ -195,10 +195,17 @@ class CompareViewModel @Inject constructor(
 
     fun onVoiceResult(productId: String, rawText: String) {
         val parsed = parseVoiceInputUseCase(rawText)
+
+        // Если названо имя — обновляем имя
         parsed.name?.let { onNameChanged(productId, it) }
+
+        // Если названа цена — обновляем цену
         parsed.price?.let { onPriceChanged(productId, it) }
+
+        // Если назван вес — обновляем вес и единицу измерения
         parsed.quantity?.let { onQuantityChanged(productId, it) }
         parsed.unit?.let { onUnitChanged(productId, it) }
+
         stopVoiceInput()
     }
 

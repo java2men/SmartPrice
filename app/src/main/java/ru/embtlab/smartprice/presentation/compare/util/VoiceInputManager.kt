@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 sealed interface VoiceRecognitionState {
     data object Idle : VoiceRecognitionState
     data object Ready : VoiceRecognitionState
-    data class Listening(val rmsDb: Float = 0f) : VoiceRecognitionState
+    data class Listening(val partialText: String = "", val rmsDb: Float = 0f) : VoiceRecognitionState
     data class Success(val text: String) : VoiceRecognitionState
     data class Error(val message: String) : VoiceRecognitionState
 }
@@ -24,6 +24,8 @@ class VoiceInputManager(private val context: Context) {
     private val _state = MutableStateFlow<VoiceRecognitionState>(VoiceRecognitionState.Idle)
     val state: StateFlow<VoiceRecognitionState> = _state.asStateFlow()
 
+    private var currentPartialText = ""
+
     fun startListening() {
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
             _state.value = VoiceRecognitionState.Error("Голосовой ввод недоступен на устройстве")
@@ -31,39 +33,67 @@ class VoiceInputManager(private val context: Context) {
         }
 
         stopListening()
+        currentPartialText = ""
 
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
             setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {
                     _state.value = VoiceRecognitionState.Ready
                 }
+
                 override fun onBeginningOfSpeech() {
-                    _state.value = VoiceRecognitionState.Listening(0f)
+                    _state.value = VoiceRecognitionState.Listening(partialText = "", rmsDb = 0f)
                 }
+
                 override fun onRmsChanged(rmsdB: Float) {
-                    _state.value = VoiceRecognitionState.Listening(rmsdB.coerceAtLeast(0f))
+                    val current = _state.value
+                    if (current is VoiceRecognitionState.Listening) {
+                        _state.value = current.copy(rmsDb = rmsdB.coerceAtLeast(0f))
+                    } else if (current is VoiceRecognitionState.Ready) {
+                        _state.value = VoiceRecognitionState.Listening(partialText = currentPartialText, rmsDb = rmsdB.coerceAtLeast(0f))
+                    }
                 }
+
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() {}
+
                 override fun onError(error: Int) {
+                    // Если пользователь успел что-то сказать до таймаута, отдаем текст
+                    if ((error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT || error == SpeechRecognizer.ERROR_NO_MATCH) && currentPartialText.isNotBlank()) {
+                        _state.value = VoiceRecognitionState.Success(currentPartialText)
+                        return
+                    }
+
                     val msg = when (error) {
                         SpeechRecognizer.ERROR_NO_MATCH -> "Не удалось разобрать речь"
-                        SpeechRecognizer.ERROR_NETWORK -> "Отсутствует подключение или оффлайн-пакет речи"
                         SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Время ожидания истекло"
-                        else -> "Ошибка распознавания речи ($error)"
+                        SpeechRecognizer.ERROR_NETWORK -> "Нет сети или оффлайн-пакета русского языка"
+                        SpeechRecognizer.ERROR_AUDIO -> "Ошибка аудиоустройства"
+                        else -> "Ошибка распознавания ($error)"
                     }
                     _state.value = VoiceRecognitionState.Error(msg)
                 }
+
                 override fun onResults(results: Bundle?) {
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    val text = matches?.firstOrNull()
-                    if (!text.isNullOrBlank()) {
-                        _state.value = VoiceRecognitionState.Success(text)
+                    val finalCandidate = matches?.firstOrNull() ?: currentPartialText
+                    if (finalCandidate.isNotBlank()) {
+                        _state.value = VoiceRecognitionState.Success(finalCandidate)
                     } else {
                         _state.value = VoiceRecognitionState.Error("Текст не распознан")
                     }
                 }
-                override fun onPartialResults(partialResults: Bundle?) {}
+
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    val candidate = matches?.firstOrNull()
+                    if (!candidate.isNullOrBlank()) {
+                        currentPartialText = candidate
+                        val rms = (_state.value as? VoiceRecognitionState.Listening)?.rmsDb ?: 0f
+                        _state.value = VoiceRecognitionState.Listening(partialText = candidate, rmsDb = rms)
+                    }
+                }
+
                 override fun onEvent(eventType: Int, params: Bundle?) {}
             })
         }
@@ -72,6 +102,7 @@ class VoiceInputManager(private val context: Context) {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         }
 
