@@ -70,6 +70,7 @@ import ru.embtlab.smartprice.presentation.compare.components.ProductCardListener
 import ru.embtlab.smartprice.presentation.compare.components.SmartSingleFieldCard
 import ru.embtlab.smartprice.presentation.compare.components.dialogs.HistoryBottomSheet
 import ru.embtlab.smartprice.presentation.compare.components.dialogs.SaveComparisonDialog
+import ru.embtlab.smartprice.presentation.compare.components.dialogs.VoiceInputDialog
 import ru.embtlab.smartprice.presentation.theme.icons.Add
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
 import ru.embtlab.smartprice.presentation.theme.icons.BookmarkAdd
@@ -78,7 +79,8 @@ import ru.embtlab.smartprice.presentation.theme.icons.Refresh
 import ru.embtlab.smartprice.presentation.theme.icons.Tune
 
 @OptIn(
-    ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class,
+    ExperimentalMaterial3Api::class,
+    ExperimentalPermissionsApi::class,
     ExperimentalLayoutApi::class
 )
 @Composable
@@ -89,18 +91,19 @@ fun CompareScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val recentNames by viewModel.recentProductNames.collectAsState()
+
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
+    val recordAudioPermissionState = rememberPermissionState(Manifest.permission.RECORD_AUDIO)
+
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-
     val focusManager = LocalFocusManager.current
     val isKeyboardOpen = WindowInsets.isImeVisible
 
     var focusedCardId by remember { mutableStateOf<String?>(null) }
     var focusTrigger by remember { mutableLongStateOf(0L) }
 
-    // Сброс фокуса только при закрытии клавиатуры пользователем жестом/кнопкой назад
     var wasKeyboardOpen by remember { mutableStateOf(false) }
     LaunchedEffect(isKeyboardOpen) {
         if (isKeyboardOpen) {
@@ -112,13 +115,13 @@ fun CompareScreen(
         }
     }
 
-    // Индекс карточки в списке с учетом предупреждающего баннера
     val focusedIndex = remember(focusedCardId, uiState.items, uiState.hasIncompatibleUnits) {
         val targetId = focusedCardId ?: return@remember null
         val rawIndex = uiState.items.indexOfFirst { it.id == targetId }
         if (rawIndex == -1) null else (if (uiState.hasIncompatibleUnits) rawIndex + 1 else rawIndex)
     }
 
+    // 1. Полноэкранный OCR-сканер через камеру
     if (uiState.scanningProductId != null) {
         if (cameraPermissionState.status.isGranted) {
             CameraOcrScanner(
@@ -148,6 +151,33 @@ fun CompareScreen(
         return
     }
 
+    // 2. Голосовой ввод данных через системный SpeechRecognizer
+    if (uiState.voiceInputProductId != null) {
+        if (recordAudioPermissionState.status.isGranted) {
+            VoiceInputDialog(
+                onResult = { recognizedText ->
+                    val id = uiState.voiceInputProductId ?: return@VoiceInputDialog
+                    viewModel.onVoiceResult(id, recognizedText)
+                },
+                onDismiss = { viewModel.stopVoiceInput() }
+            )
+        } else {
+            AlertDialog(
+                onDismissRequest = { viewModel.stopVoiceInput() },
+                title = { Text("Требуется доступ к микрофону") },
+                text = { Text("Микрофон необходим для быстрого голосового ввода цены и веса товара.") },
+                confirmButton = {
+                    Button(onClick = { recordAudioPermissionState.launchPermissionRequest() }) {
+                        Text("Предоставить")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.stopVoiceInput() }) { Text("Отмена") }
+                }
+            )
+        }
+    }
+
     val hasDataToReset = uiState.items.size > 2 ||
             uiState.items.any { it.priceInput.isNotBlank() || it.quantityInput.isNotBlank() }
     val canSaveResult = uiState.results.any { it.isBestChoice } && !uiState.hasIncompatibleUnits
@@ -155,22 +185,13 @@ fun CompareScreen(
     val cardListener = remember(viewModel) {
         object : ProductCardListener {
             override fun onNameChange(id: String, name: String) = viewModel.onNameChanged(id, name)
-            override fun onPriceChange(id: String, price: String) =
-                viewModel.onPriceChanged(id, price)
-
-            override fun onQuantityChange(id: String, quantity: String) =
-                viewModel.onQuantityChanged(id, quantity)
-
-            override fun onUnitChange(id: String, unit: ProductUnit) =
-                viewModel.onUnitChanged(id, unit)
-
-            override fun onDiscountTypeChange(id: String, type: DiscountType) =
-                viewModel.onDiscountTypeChanged(id, type)
-
-            override fun onCustomDiscountChange(id: String, percent: String) =
-                viewModel.onCustomDiscountChanged(id, percent)
-
+            override fun onPriceChange(id: String, price: String) = viewModel.onPriceChanged(id, price)
+            override fun onQuantityChange(id: String, quantity: String) = viewModel.onQuantityChanged(id, quantity)
+            override fun onUnitChange(id: String, unit: ProductUnit) = viewModel.onUnitChanged(id, unit)
+            override fun onDiscountTypeChange(id: String, type: DiscountType) = viewModel.onDiscountTypeChanged(id, type)
+            override fun onCustomDiscountChange(id: String, percent: String) = viewModel.onCustomDiscountChanged(id, percent)
             override fun onScanClick(id: String) = viewModel.startScanning(id)
+            override fun onVoiceClick(id: String) = viewModel.startVoiceInput(id)
             override fun onDelete(id: String) = viewModel.onTrashClick(id)
             override fun onCardFocused(id: String) {
                 focusedCardId = id
@@ -295,7 +316,7 @@ fun CompareScreen(
                     ) {
                         Icon(
                             imageVector = AppIcons.Default.Add,
-                            contentDescription = if (uiState.canAddMore) "Добавить товар" else "Достигнут лимит"
+                            contentDescription = if (uiState.canAddMore) "Добавить товар" else "Достигнут лимит товаров"
                         )
                     }
                 }
@@ -328,7 +349,6 @@ fun CompareScreen(
                     }
                 }
             }
-
             items(uiState.items, key = { it.id }) { item ->
                 val calcResult = uiState.results.find { it.product.id == item.id }
                 when (uiState.cardStyle) {
@@ -342,7 +362,6 @@ fun CompareScreen(
                             onDeleteRecentName = { viewModel.removeRecentName(it) },
                         )
                     }
-
                     CardStylePreset.SMART_SINGLE_FIELD -> {
                         SmartSingleFieldCard(
                             item = item,
@@ -353,7 +372,6 @@ fun CompareScreen(
                             onDeleteRecentName = { viewModel.removeRecentName(it) },
                         )
                     }
-
                     CardStylePreset.FULL_SCREEN_EDITOR -> {
                         CompactProductSummaryCard(
                             item = item,

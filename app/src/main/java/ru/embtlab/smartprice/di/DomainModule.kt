@@ -7,6 +7,7 @@ import dagger.hilt.components.SingletonComponent
 import ru.embtlab.smartprice.domain.repository.ComparisonHistoryRepository
 import ru.embtlab.smartprice.domain.usecase.CalculateComparisonUseCase
 import ru.embtlab.smartprice.domain.usecase.GetHistoryUseCase
+import ru.embtlab.smartprice.domain.usecase.ParseVoiceInputUseCase
 import ru.embtlab.smartprice.domain.usecase.SaveComparisonUseCase
 import javax.inject.Singleton
 
@@ -30,5 +31,11 @@ object DomainModule {
     @Singleton
     fun provideSaveComparisonUseCase(repository: ComparisonHistoryRepository): SaveComparisonUseCase {
         return SaveComparisonUseCase(repository)
+    }
+
+    @Provides
+    @Singleton
+    fun provideParseVoiceInputUseCase(): ParseVoiceInputUseCase {
+        return ParseVoiceInputUseCase()
     }
 }

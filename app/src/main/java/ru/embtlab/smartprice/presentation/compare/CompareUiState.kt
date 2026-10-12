@@ -16,7 +16,8 @@ data class CompareUiState(
     val isHistorySheetOpen: Boolean = false,
     val isSaveDialogOpen: Boolean = false,
     val saveDialogTitleInput: String = "",
-    val scanningProductId: String? = null
+    val scanningProductId: String? = null,
+    val voiceInputProductId: String? = null,
 ) {
     val canAddMore: Boolean
         get() = items.size < ComparisonConfig.MAX_PRODUCTS_LIMIT

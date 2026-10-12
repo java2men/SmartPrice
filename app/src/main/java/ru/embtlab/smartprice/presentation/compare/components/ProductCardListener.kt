@@ -14,6 +14,7 @@ interface ProductCardListener {
     fun onDiscountTypeChange(id: String, type: DiscountType)
     fun onCustomDiscountChange(id: String, percent: String)
     fun onScanClick(id: String)
+    fun onVoiceClick(id: String)
     fun onDelete(id: String)
     fun onCardFocused(id: String)
 }

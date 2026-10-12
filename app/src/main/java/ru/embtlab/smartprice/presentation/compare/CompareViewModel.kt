@@ -10,6 +10,7 @@ import ru.embtlab.smartprice.domain.model.*
 import ru.embtlab.smartprice.domain.repository.ComparisonHistoryRepository
 import ru.embtlab.smartprice.domain.usecase.CalculateComparisonUseCase
 import ru.embtlab.smartprice.domain.usecase.GetHistoryUseCase
+import ru.embtlab.smartprice.domain.usecase.ParseVoiceInputUseCase
 import ru.embtlab.smartprice.domain.usecase.SaveComparisonUseCase
 import java.text.SimpleDateFormat
 import java.util.*
@@ -20,6 +21,7 @@ class CompareViewModel @Inject constructor(
     private val calculateComparisonUseCase: CalculateComparisonUseCase,
     private val getHistoryUseCase: GetHistoryUseCase,
     private val saveComparisonUseCase: SaveComparisonUseCase,
+    private val parseVoiceInputUseCase: ParseVoiceInputUseCase,
     private val repository: ComparisonHistoryRepository,
     private val settingsDataStore: SettingsDataStore
 ) : ViewModel() {
@@ -181,6 +183,23 @@ class CompareViewModel @Inject constructor(
         viewModelScope.launch {
             saveComparisonUseCase(record)
         }
+    }
+
+    fun startVoiceInput(productId: String) {
+        _uiState.update { it.copy(voiceInputProductId = productId) }
+    }
+
+    fun stopVoiceInput() {
+        _uiState.update { it.copy(voiceInputProductId = null) }
+    }
+
+    fun onVoiceResult(productId: String, rawText: String) {
+        val parsed = parseVoiceInputUseCase(rawText)
+        parsed.name?.let { onNameChanged(productId, it) }
+        parsed.price?.let { onPriceChanged(productId, it) }
+        parsed.quantity?.let { onQuantityChanged(productId, it) }
+        parsed.unit?.let { onUnitChanged(productId, it) }
+        stopVoiceInput()
     }
 
     fun deleteHistoryItem(id: Long) {
