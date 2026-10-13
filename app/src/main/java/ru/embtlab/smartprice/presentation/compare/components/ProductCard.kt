@@ -63,7 +63,8 @@ fun ProductCard(
     modifier: Modifier = Modifier,
     recentNames: List<String> = emptyList(),
     onDeleteRecentName: (String) -> Unit = {},
-    isVoiceTarget: Boolean = false
+    isVoiceTarget: Boolean = false,
+    isFilledExplicit: Boolean = false
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -122,18 +123,18 @@ fun ProductCard(
                     .focusable()
             )
 
-            val isFilled = item.name.isNotBlank() ||
-                    item.priceInput.isNotBlank() ||
-                    item.quantityInput.isNotBlank() ||
-                    item.customDiscountPercentInput.isNotBlank() ||
-                    item.discountType != DiscountType.NONE
+//            val isFilled = item.name.isNotBlank() ||
+//                    item.priceInput.isNotBlank() ||
+//                    item.quantityInput.isNotBlank() ||
+//                    item.customDiscountPercentInput.isNotBlank() ||
+//                    item.discountType != DiscountType.NONE
 
             ProductHeader(
                 id = item.id,
                 name = item.name,
                 canDelete = canDelete,
                 listener = listener,
-                isFilled = isFilled,
+                isFilled = isFilledExplicit,
                 recentNames = recentNames,
                 onDeleteRecentName = onDeleteRecentName
             )

@@ -296,14 +296,18 @@ class CompareViewModel @Inject constructor(
     }
 
     fun onTrashClick(productId: String) {
-        val item = _uiState.value.items.find { it.id == productId } ?: return
-        val isFilled = item.priceInput.isNotBlank() ||
-                item.quantityInput.isNotBlank() ||
-                item.customDiscountPercentInput.isNotBlank() ||
-                item.discountType != DiscountType.NONE
-        if (isFilled) {
+        val index = _uiState.value.items.indexOfFirst { it.id == productId }
+        if (index == -1) return
+        val item = _uiState.value.items[index]
+        val defaultName = "Товар ${index + 1}"
+
+        val isModified = isItemModified(item, index)
+
+        if (isModified) {
+            // Если карточка была изменена — очищаем поля и возвращаем дефолтное имя с правильным индексом
             updateProduct(productId) {
                 it.copy(
+                    name = defaultName,
                     priceInput = "",
                     quantityInput = "",
                     customDiscountPercentInput = "",
@@ -311,10 +315,19 @@ class CompareViewModel @Inject constructor(
                 )
             }
         } else {
+            // Если карточка уже пустая со стандартным именем — удаляем саму карточку (если их больше двух)
             if (_uiState.value.items.size > ProductConstants.MIN_PRODUCTS_COUNT) {
                 removeProduct(productId)
             }
         }
+    }
+
+    private fun isItemModified(item: ProductItem, index: Int): Boolean {
+        val defaultName = "Товар ${index + 1}"
+        val isNameChanged = item.name.isNotBlank() && !item.name.equals(defaultName, ignoreCase = true)
+        val hasPriceOrQuantity = item.priceInput.isNotBlank() || item.quantityInput.isNotBlank()
+        val hasDiscount = item.customDiscountPercentInput.isNotBlank() || item.discountType != DiscountType.NONE
+        return isNameChanged || hasPriceOrQuantity || hasDiscount
     }
 
     fun resetWithBackup() {

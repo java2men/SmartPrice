@@ -155,17 +155,37 @@ fun CompareScreen(
     }
 
     val hasDataToReset = uiState.items.size > 2 ||
-            uiState.items.any { it.priceInput.isNotBlank() || it.quantityInput.isNotBlank() }
+            uiState.items.mapIndexed { index, item ->
+                val defaultName = "Товар ${index + 1}"
+                val isNameChanged =
+                    item.name.isNotBlank() && !item.name.equals(defaultName, ignoreCase = true)
+                isNameChanged ||
+                        item.priceInput.isNotBlank() ||
+                        item.quantityInput.isNotBlank() ||
+                        item.customDiscountPercentInput.isNotBlank() ||
+                        item.discountType != DiscountType.NONE
+            }.any { it }
+
     val canSaveResult = uiState.results.any { it.isBestChoice } && !uiState.hasIncompatibleUnits
 
     val cardListener = remember(viewModel) {
         object : ProductCardListener {
             override fun onNameChange(id: String, name: String) = viewModel.onNameChanged(id, name)
-            override fun onPriceChange(id: String, price: String) = viewModel.onPriceChanged(id, price)
-            override fun onQuantityChange(id: String, quantity: String) = viewModel.onQuantityChanged(id, quantity)
-            override fun onUnitChange(id: String, unit: ProductUnit) = viewModel.onUnitChanged(id, unit)
-            override fun onDiscountTypeChange(id: String, type: DiscountType) = viewModel.onDiscountTypeChanged(id, type)
-            override fun onCustomDiscountChange(id: String, percent: String) = viewModel.onCustomDiscountChanged(id, percent)
+            override fun onPriceChange(id: String, price: String) =
+                viewModel.onPriceChanged(id, price)
+
+            override fun onQuantityChange(id: String, quantity: String) =
+                viewModel.onQuantityChanged(id, quantity)
+
+            override fun onUnitChange(id: String, unit: ProductUnit) =
+                viewModel.onUnitChanged(id, unit)
+
+            override fun onDiscountTypeChange(id: String, type: DiscountType) =
+                viewModel.onDiscountTypeChanged(id, type)
+
+            override fun onCustomDiscountChange(id: String, percent: String) =
+                viewModel.onCustomDiscountChanged(id, percent)
+
             override fun onScanClick(id: String) = viewModel.startScanning(id)
             override fun onDelete(id: String) = viewModel.onTrashClick(id)
             override fun onCardFocused(id: String) {
@@ -366,8 +386,15 @@ fun CompareScreen(
 
             items(uiState.items, key = { it.id }) { item ->
                 val calcResult = uiState.results.find { it.product.id == item.id }
-                // Активная карточка подсвечивается, если выбран её фокус
                 val isTarget = (item.id == focusedCardId)
+                val itemIndex = uiState.items.indexOf(item)
+                val defaultName = "Товар ${itemIndex + 1}"
+                val isItemFilled =
+                    (item.name.isNotBlank() && !item.name.equals(defaultName, ignoreCase = true)) ||
+                            item.priceInput.isNotBlank() ||
+                            item.quantityInput.isNotBlank() ||
+                            item.customDiscountPercentInput.isNotBlank() ||
+                            item.discountType != DiscountType.NONE
 
                 when (uiState.cardStyle) {
                     CardStylePreset.CLASSIC -> {
@@ -378,9 +405,11 @@ fun CompareScreen(
                             listener = cardListener,
                             recentNames = recentNames,
                             onDeleteRecentName = { viewModel.removeRecentName(it) },
-                            isVoiceTarget = isTarget
+                            isVoiceTarget = isTarget,
+                            isFilledExplicit = isItemFilled
                         )
                     }
+
                     CardStylePreset.SMART_SINGLE_FIELD -> {
                         SmartSingleFieldCard(
                             item = item,
@@ -389,20 +418,24 @@ fun CompareScreen(
                             listener = cardListener,
                             recentNames = recentNames,
                             onDeleteRecentName = { viewModel.removeRecentName(it) },
-                            isVoiceTarget = isTarget
+                            isVoiceTarget = isTarget,
+                            isFilledExplicit = isItemFilled
                         )
                     }
+
                     CardStylePreset.FULL_SCREEN_EDITOR -> {
                         CompactProductSummaryCard(
                             item = item,
                             calcResult = calcResult,
                             canDelete = uiState.items.size > 2,
                             onCardClick = { onEditProduct(item.id) },
-                            onDeleteClick = { viewModel.onTrashClick(item.id) }
+                            onDeleteClick = { viewModel.onTrashClick(item.id) },
+                            isFilledExplicit = isItemFilled
                         )
                     }
                 }
             }
+
         }
 
         if (uiState.isSaveDialogOpen) {

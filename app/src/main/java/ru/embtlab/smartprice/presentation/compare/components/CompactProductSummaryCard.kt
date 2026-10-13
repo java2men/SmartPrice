@@ -25,14 +25,14 @@ fun CompactProductSummaryCard(
     canDelete: Boolean,
     onCardClick: () -> Unit,
     onDeleteClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isFilledExplicit: Boolean = false
 ) {
     val isBest = calcResult?.isBestChoice == true
     val borderColor =
         if (isBest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
 
     val baseUnitLabel = item.unit.category.baseLabel
-    val isFilled = item.priceInput.isNotBlank() || item.quantityInput.isNotBlank()
 
     Card(
         modifier = modifier
@@ -131,13 +131,13 @@ fun CompactProductSummaryCard(
                     }
                 }
 
-                if (canDelete || isFilled) {
+                if (canDelete || isFilledExplicit) {
                     Spacer(modifier = Modifier.width(8.dp))
                     IconButton(onClick = onDeleteClick) {
                         Icon(
                             imageVector = AppIcons.Default.Delete,
-                            contentDescription = if (isFilled) "Очистить" else "Удалить",
-                            tint = if (isFilled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
+                            contentDescription = if (isFilledExplicit) "Очистить" else "Удалить",
+                            tint = if (isFilledExplicit) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
                         )
                     }
                 }
