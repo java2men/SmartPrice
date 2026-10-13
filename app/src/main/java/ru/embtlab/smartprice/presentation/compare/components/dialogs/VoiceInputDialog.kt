@@ -8,7 +8,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -47,13 +46,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.delay
+import ru.embtlab.smartprice.domain.model.DiscountType
 import ru.embtlab.smartprice.domain.usecase.ParseVoiceInputUseCase
 import ru.embtlab.smartprice.presentation.compare.util.VoiceInputManager
 import ru.embtlab.smartprice.presentation.compare.util.VoiceRecognitionState
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
 import ru.embtlab.smartprice.presentation.theme.icons.Mic
+import kotlin.time.Duration.Companion.milliseconds
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun VoiceInputDialog(
     onResult: (String) -> Unit,
@@ -73,7 +73,6 @@ fun VoiceInputDialog(
         onDispose { voiceManager.stopListening() }
     }
 
-    // Реакция на изменение распознаваемого текста на лету
     LaunchedEffect(state) {
         when (val s = state) {
             is VoiceRecognitionState.Listening -> {
@@ -86,7 +85,7 @@ fun VoiceInputDialog(
                 activeSpokenText = s.text
                 liveParsedPreview = parser(s.text)
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                delay(350) // Небольшая задержка, чтобы пользователь увидел финальный чипс
+                delay(350.milliseconds)
                 onResult(s.text)
                 onDismiss()
             }
@@ -121,7 +120,7 @@ fun VoiceInputDialog(
                     fontWeight = FontWeight.Bold
                 )
 
-                // Пульсирующая иконка микрофона
+                // Пульсирующий индикатор громкости
                 Box(
                     modifier = Modifier
                         .size(76.dp)
@@ -140,12 +139,12 @@ fun VoiceInputDialog(
                     )
                 }
 
-                // Живая строка расшифровки речи
+                // Живой транскрипт речи
                 Text(
                     text = when {
                         state is VoiceRecognitionState.Error -> (state as VoiceRecognitionState.Error).message
                         activeSpokenText.isNotBlank() -> "«$activeSpokenText»"
-                        state is VoiceRecognitionState.Ready -> "Слушаю... Говорите цену или вес"
+                        state is VoiceRecognitionState.Ready -> "Слушаю... Назовите цену, вес или акцию"
                         else -> "Инициализация микрофона..."
                     },
                     style = MaterialTheme.typography.bodyMedium,
@@ -155,9 +154,12 @@ fun VoiceInputDialog(
                     modifier = Modifier.padding(horizontal = 8.dp)
                 )
 
-                // Живые чипсы распознанных слотов
+                // Динамические чипсы разобранных слотов (Товар, Цена, Вес, Акция)
                 AnimatedVisibility(
-                    visible = liveParsedPreview.price != null || liveParsedPreview.quantity != null || liveParsedPreview.name != null,
+                    visible = liveParsedPreview.price != null ||
+                            liveParsedPreview.quantity != null ||
+                            liveParsedPreview.name != null ||
+                            liveParsedPreview.discountType != null,
                     enter = fadeIn(),
                     exit = fadeOut()
                 ) {
@@ -175,6 +177,7 @@ fun VoiceInputDialog(
                                 )
                             )
                         }
+
                         liveParsedPreview.price?.let { price ->
                             SuggestionChip(
                                 onClick = {},
@@ -184,6 +187,7 @@ fun VoiceInputDialog(
                                 )
                             )
                         }
+
                         liveParsedPreview.quantity?.let { qty ->
                             val unitLabel = liveParsedPreview.unit?.label ?: "г"
                             SuggestionChip(
@@ -193,6 +197,29 @@ fun VoiceInputDialog(
                                     containerColor = MaterialTheme.colorScheme.tertiaryContainer
                                 )
                             )
+                        }
+
+                        liveParsedPreview.discountType?.let { discount ->
+                            val discountLabel = when (discount) {
+                                DiscountType.ONE_PLUS_ONE -> "Акция: 1+1"
+                                DiscountType.TWO_PLUS_ONE -> "Акция: 2+1"
+                                DiscountType.PERCENT -> {
+                                    val pct = liveParsedPreview.discountPercent
+                                    if (!pct.isNullOrBlank()) "Скидка: -$pct%" else "Скидка: %"
+                                }
+                                DiscountType.NONE -> null
+                            }
+
+                            if (discountLabel != null) {
+                                SuggestionChip(
+                                    onClick = {},
+                                    label = { Text(discountLabel, fontSize = 12.sp, fontWeight = FontWeight.Bold) },
+                                    colors = SuggestionChipDefaults.suggestionChipColors(
+                                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                                        labelColor = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                )
+                            }
                         }
                     }
                 }
