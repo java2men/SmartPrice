@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -52,8 +53,8 @@ import ru.embtlab.smartprice.presentation.compare.util.VoiceInputManager
 import ru.embtlab.smartprice.presentation.compare.util.VoiceRecognitionState
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
 import ru.embtlab.smartprice.presentation.theme.icons.Mic
-import kotlin.time.Duration.Companion.milliseconds
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun VoiceInputDialog(
     onResult: (String) -> Unit,
@@ -85,7 +86,7 @@ fun VoiceInputDialog(
                 activeSpokenText = s.text
                 liveParsedPreview = parser(s.text)
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                delay(350.milliseconds)
+                delay(1200)
                 onResult(s.text)
                 onDismiss()
             }
@@ -120,7 +121,6 @@ fun VoiceInputDialog(
                     fontWeight = FontWeight.Bold
                 )
 
-                // Пульсирующий индикатор громкости
                 Box(
                     modifier = Modifier
                         .size(76.dp)
@@ -139,7 +139,6 @@ fun VoiceInputDialog(
                     )
                 }
 
-                // Живой транскрипт речи
                 Text(
                     text = when {
                         state is VoiceRecognitionState.Error -> (state as VoiceRecognitionState.Error).message
@@ -154,7 +153,6 @@ fun VoiceInputDialog(
                     modifier = Modifier.padding(horizontal = 8.dp)
                 )
 
-                // Динамические чипсы разобранных слотов (Товар, Цена, Вес, Акция)
                 AnimatedVisibility(
                     visible = liveParsedPreview.price != null ||
                             liveParsedPreview.quantity != null ||
