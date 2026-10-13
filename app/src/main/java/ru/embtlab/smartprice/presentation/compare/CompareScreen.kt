@@ -1,4 +1,3 @@
-// presentation/compare/CompareScreen.kt
 package ru.embtlab.smartprice.presentation.compare
 
 import android.Manifest
@@ -11,7 +10,9 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -49,6 +50,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -68,9 +70,9 @@ import ru.embtlab.smartprice.presentation.compare.components.CompactProductSumma
 import ru.embtlab.smartprice.presentation.compare.components.ProductCard
 import ru.embtlab.smartprice.presentation.compare.components.ProductCardListener
 import ru.embtlab.smartprice.presentation.compare.components.SmartSingleFieldCard
+import ru.embtlab.smartprice.presentation.compare.components.VoiceHoldToTalkButton
 import ru.embtlab.smartprice.presentation.compare.components.dialogs.HistoryBottomSheet
 import ru.embtlab.smartprice.presentation.compare.components.dialogs.SaveComparisonDialog
-import ru.embtlab.smartprice.presentation.compare.components.dialogs.VoiceInputDialog
 import ru.embtlab.smartprice.presentation.theme.icons.Add
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
 import ru.embtlab.smartprice.presentation.theme.icons.BookmarkAdd
@@ -121,7 +123,7 @@ fun CompareScreen(
         if (rawIndex == -1) null else (if (uiState.hasIncompatibleUnits) rawIndex + 1 else rawIndex)
     }
 
-    // 1. Полноэкранный OCR-сканер через камеру
+    // OCR-сканер камеры
     if (uiState.scanningProductId != null) {
         if (cameraPermissionState.status.isGranted) {
             CameraOcrScanner(
@@ -151,33 +153,6 @@ fun CompareScreen(
         return
     }
 
-    // 2. Голосовой ввод данных через системный SpeechRecognizer
-    if (uiState.voiceInputProductId != null) {
-        if (recordAudioPermissionState.status.isGranted) {
-            VoiceInputDialog(
-                onResult = { recognizedText ->
-                    val id = uiState.voiceInputProductId ?: return@VoiceInputDialog
-                    viewModel.onVoiceResult(id, recognizedText)
-                },
-                onDismiss = { viewModel.stopVoiceInput() }
-            )
-        } else {
-            AlertDialog(
-                onDismissRequest = { viewModel.stopVoiceInput() },
-                title = { Text("Требуется доступ к микрофону") },
-                text = { Text("Микрофон необходим для быстрого голосового ввода цены и веса товара.") },
-                confirmButton = {
-                    Button(onClick = { recordAudioPermissionState.launchPermissionRequest() }) {
-                        Text("Предоставить")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { viewModel.stopVoiceInput() }) { Text("Отмена") }
-                }
-            )
-        }
-    }
-
     val hasDataToReset = uiState.items.size > 2 ||
             uiState.items.any { it.priceInput.isNotBlank() || it.quantityInput.isNotBlank() }
     val canSaveResult = uiState.results.any { it.isBestChoice } && !uiState.hasIncompatibleUnits
@@ -191,7 +166,6 @@ fun CompareScreen(
             override fun onDiscountTypeChange(id: String, type: DiscountType) = viewModel.onDiscountTypeChanged(id, type)
             override fun onCustomDiscountChange(id: String, percent: String) = viewModel.onCustomDiscountChanged(id, percent)
             override fun onScanClick(id: String) = viewModel.startScanning(id)
-            override fun onVoiceClick(id: String) = viewModel.startVoiceInput(id)
             override fun onDelete(id: String) = viewModel.onTrashClick(id)
             override fun onCardFocused(id: String) {
                 focusedCardId = id
@@ -257,67 +231,87 @@ fun CompareScreen(
                 enter = fadeIn() + scaleIn(),
                 exit = fadeOut() + scaleOut()
             ) {
-                BadgedBox(
-                    badge = {
-                        Badge(
-                            containerColor = if (uiState.canAddMore) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.error
-                            },
-                            contentColor = MaterialTheme.colorScheme.onPrimary
-                        ) {
-                            AnimatedContent(
-                                targetState = uiState.items.size,
-                                transitionSpec = {
-                                    if (targetState > initialState) {
-                                        (slideInVertically { height -> height } + fadeIn()).togetherWith(
-                                            slideOutVertically { height -> -height } + fadeOut()
-                                        )
-                                    } else {
-                                        (slideInVertically { height -> -height } + fadeIn()).togetherWith(
-                                            slideOutVertically { height -> height } + fadeOut()
-                                        )
-                                    }
-                                },
-                                label = "ItemsCountAnimation"
-                            ) { count ->
-                                Text(
-                                    text = "$count",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp,
-                                    modifier = Modifier.padding(horizontal = 4.dp),
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
-                        }
-                    }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    FloatingActionButton(
-                        onClick = {
-                            if (uiState.canAddMore) {
-                                viewModel.addProduct()
-                                coroutineScope.launch {
-                                    listState.animateScrollToItem(uiState.items.size)
+                    val targetCardTitle = remember(uiState.voiceTargetCardId, uiState.items) {
+                        uiState.items.find { it.id == uiState.voiceTargetCardId }?.name.orEmpty().ifBlank { "Новый товар" }
+                    }
+
+                    // Плавающая кнопка Push-to-Talk (Вариант 1)
+                    VoiceHoldToTalkButton(
+                        targetCardTitle = targetCardTitle,
+                        hasAudioPermission = recordAudioPermissionState.status.isGranted,
+                        onRequireAudioPermission = { recordAudioPermissionState.launchPermissionRequest() },
+                        onStartRecording = { viewModel.startPushToTalk(focusedCardId) },
+                        onStopRecording = { text -> viewModel.onVoicePhraseCompleted(text) },
+                        onCancelRecording = { viewModel.cancelPushToTalk() }
+                    )
+
+                    // Кнопка добавления (+) со счетчиком
+                    BadgedBox(
+                        badge = {
+                            Badge(
+                                containerColor = if (uiState.canAddMore) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.error
+                                },
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ) {
+                                AnimatedContent(
+                                    targetState = uiState.items.size,
+                                    transitionSpec = {
+                                        if (targetState > initialState) {
+                                            (slideInVertically { height -> height } + fadeIn()).togetherWith(
+                                                slideOutVertically { height -> -height } + fadeOut()
+                                            )
+                                        } else {
+                                            (slideInVertically { height -> -height } + fadeIn()).togetherWith(
+                                                slideOutVertically { height -> height } + fadeOut()
+                                            )
+                                        }
+                                    },
+                                    label = "ItemsCountAnimation"
+                                ) { count ->
+                                    Text(
+                                        text = "$count",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(horizontal = 4.dp),
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
                                 }
                             }
-                        },
-                        containerColor = if (uiState.canAddMore) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant
-                        },
-                        contentColor = if (uiState.canAddMore) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
                         }
                     ) {
-                        Icon(
-                            imageVector = AppIcons.Default.Add,
-                            contentDescription = if (uiState.canAddMore) "Добавить товар" else "Достигнут лимит товаров"
-                        )
+                        FloatingActionButton(
+                            onClick = {
+                                if (uiState.canAddMore) {
+                                    viewModel.addProduct()
+                                    coroutineScope.launch {
+                                        listState.animateScrollToItem(uiState.items.size)
+                                    }
+                                }
+                            },
+                            containerColor = if (uiState.canAddMore) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            },
+                            contentColor = if (uiState.canAddMore) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                            }
+                        ) {
+                            Icon(
+                                imageVector = AppIcons.Default.Add,
+                                contentDescription = if (uiState.canAddMore) "Добавить товар" else "Лимит"
+                            )
+                        }
                     }
                 }
             }
@@ -351,6 +345,8 @@ fun CompareScreen(
             }
             items(uiState.items, key = { it.id }) { item ->
                 val calcResult = uiState.results.find { it.product.id == item.id }
+                val isTarget = (item.id == uiState.voiceTargetCardId && uiState.isVoiceRecordingActive)
+
                 when (uiState.cardStyle) {
                     CardStylePreset.CLASSIC -> {
                         ProductCard(
@@ -360,6 +356,7 @@ fun CompareScreen(
                             listener = cardListener,
                             recentNames = recentNames,
                             onDeleteRecentName = { viewModel.removeRecentName(it) },
+                            isVoiceTarget = isTarget
                         )
                     }
                     CardStylePreset.SMART_SINGLE_FIELD -> {
@@ -369,7 +366,7 @@ fun CompareScreen(
                             canDelete = uiState.items.size > 2,
                             listener = cardListener,
                             recentNames = recentNames,
-                            onDeleteRecentName = { viewModel.removeRecentName(it) },
+                            onDeleteRecentName = { viewModel.removeRecentName(it) }
                         )
                     }
                     CardStylePreset.FULL_SCREEN_EDITOR -> {

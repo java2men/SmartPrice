@@ -63,7 +63,8 @@ fun SmartSingleFieldCard(
     listener: ProductCardListener,
     modifier: Modifier = Modifier,
     recentNames: List<String> = emptyList(),
-    onDeleteRecentName: (String) -> Unit = {}
+    onDeleteRecentName: (String) -> Unit = {},
+    isVoiceTarget: Boolean = false
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -75,8 +76,13 @@ fun SmartSingleFieldCard(
 
     val isDiscountOpen = item.discountType == DiscountType.PERCENT
     val isBest = calcResult?.isBestChoice == true
-    val borderColor =
-        if (isBest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+
+    val borderColor = when {
+        isVoiceTarget -> MaterialTheme.colorScheme.primary
+        isBest -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.outlineVariant
+    }
+    val borderWidth = if (isVoiceTarget || isBest) 2.dp else 1.dp
 
     val dismissKeyboardAndFocus = {
         dummyFocusRequester.requestFocus()
@@ -114,10 +120,13 @@ fun SmartSingleFieldCard(
                 onExit = { FocusRequester.Cancel }
             },
         shape = MaterialTheme.shapes.medium,
-        border = BorderStroke(if (isBest) 2.dp else 1.dp, borderColor),
+        border = BorderStroke(borderWidth, borderColor),
         colors = CardDefaults.cardColors(
-            containerColor = if (isBest) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
-            else MaterialTheme.colorScheme.surface
+            containerColor = when {
+                isVoiceTarget -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                isBest -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                else -> MaterialTheme.colorScheme.surface
+            }
         )
     ) {
         Column(
@@ -182,7 +191,6 @@ fun SmartSingleFieldCard(
                             rawText = filtered
 
                             val tokens = filtered.split(Regex("""[\s/]+""")).filter { it.isNotEmpty() }
-
                             if (tokens.isEmpty()) {
                                 listener.onPriceChange(item.id, "")
                                 listener.onQuantityChange(item.id, "")

@@ -29,24 +29,27 @@ class ParseVoiceInputUseCase {
             .replace(Regex("""\bс половиной\b"""), ".5")
             .replace(Regex("""\bи половина\b"""), ".5")
 
-        // 2. Преобразование текстовых числительных (от единиц до сотен тысяч и миллионов)
+        // 2. Преобразование текстовых числительных в цифры
         text = RussianNumberWordParser.parseTextToDigits(text)
 
-        // 3. Склеивание рублей и копеек ("189 рублей 50 копеек", "189 руб 50") -> 189.50
-        val rubleKopeckRegex = Regex("""(\d+)\s*(?:рубл\w*|руб\.?|₽)\s*(\d{1,2})\s*(?:коп\w*)?""")
-        text = rubleKopeckRegex.replace(text) { match ->
+        // 3. Аккуратная обработка копеек:
+        // А) Явные копейки: "50 рублей 50 копеек" или "50 руб 20 коп" -> 50.20
+        val explicitKopeckRegex = Regex("""(\d+)\s*(?:рубл\w*|руб\.?|₽)\s*(\d{1,2})\s*(?:коп\w*)""")
+        text = explicitKopeckRegex.replace(text) { match ->
             val rub = match.groupValues[1]
             val kop = match.groupValues[2].padStart(2, '0').take(2)
             "$rub.$kop рублей "
         }
 
+        // Б) Только копейки: "50 копеек" -> 0.50 рублей
         val onlyKopeckRegex = Regex("""\b(\d{1,2})\s*коп\w*""")
         text = onlyKopeckRegex.replace(text) { match ->
             val kop = match.groupValues[1].padStart(2, '0').take(2)
             "0.$kop рублей "
         }
 
-        val numberAndFractionRegex = Regex("""(\d+)\s+(?:и|точка|целых|целая)\s+(\d{1,2})\b""")
+        // В) Дробные связки со словами "и / точка / целых" (например "50 и 50", но НЕ "50 рублей 1 литр"):
+        val numberAndFractionRegex = Regex("""(\d+)\s+(?:точка|целых|целая)\s+(\d{1,2})\b""")
         text = numberAndFractionRegex.replace(text) { match ->
             val whole = match.groupValues[1]
             val frac = match.groupValues[2]
@@ -91,7 +94,7 @@ class ParseVoiceInputUseCase {
         var detectedUnit: ProductUnit? = null
         var detectedPrice: String? = null
 
-        // 5. ЯКОРЬ КОЛИЧЕСТВА: ищем число, стоящее рядом с единицей измерения
+        // 5. ЯКОРЬ КОЛИЧЕСТВА: сначала ищем число, стоящее вплотную к единице измерения (например "1 литр", "900 г", "2 шт")
         for ((tokens, unit) in unitsMap) {
             val tokensPattern = tokens.joinToString("|") { Regex.escape(it) }
             val unitRegex = Regex("""(\d+(?:\.\d+)?)\s*(?:$tokensPattern)\b|(?:\b(?:$tokensPattern)\s*(\d+(?:\.\d+)?))""")
@@ -99,18 +102,17 @@ class ParseVoiceInputUseCase {
             if (match != null) {
                 detectedQuantity = match.groupValues[1].ifEmpty { match.groupValues[2] }
                 detectedUnit = unit
-                // Удаляем найденную конструкцию из строки
                 text = text.replaceRange(match.range, " ")
                 break
             }
         }
 
-        // Если единица измерения прозвучала отдельно без слитного числа
+        // Если единица измерения названа без числа (например, просто "литр") -> считаем количество 1
         if (detectedUnit == null) {
             for ((tokens, unit) in unitsMap) {
                 val matched = tokens.any { token ->
-                    Regex("""(?:\b|(?<=\d))$token\b""").containsMatchIn(text) ||
-                            text.split(Regex("""\s+""")).any { FuzzyMatcher.matchesAny(it, listOf(token), 0.82) }
+                    Regex("""\b$token\b""").containsMatchIn(text) ||
+                            text.split(Regex("""\s+""")).any { FuzzyMatcher.matchesAny(it, listOf(token), 0.85) }
                 }
                 if (matched) {
                     detectedUnit = unit
@@ -119,7 +121,7 @@ class ParseVoiceInputUseCase {
             }
         }
 
-        // 6. ЯКОРЬ ЦЕНЫ: ищем число рядом со словами "рублей", "руб", "₽"
+        // 6. ЯКОРЬ ЦЕНЫ: ищем число рядом со словом "рублей / руб / ₽"
         val priceAnchorRegex = Regex("""(\d+(?:\.\d+)?)\s*(?:рубл\w*|руб\.?|₽)""")
         val priceMatch = priceAnchorRegex.find(text)
         if (priceMatch != null) {
@@ -127,9 +129,8 @@ class ParseVoiceInputUseCase {
             text = text.replaceRange(priceMatch.range, " ")
         }
 
-        // 7. Распределяем оставшиеся изолированные числа
+        // 7. Распределяем оставшиеся изолированные числа (если слова "рублей" не было)
         val remainingNumbers = Regex("""\b\d+(?:\.\d+)?\b""").findAll(text).map { it.value }.toList()
-
         for (num in remainingNumbers) {
             if (detectedPrice == null) {
                 detectedPrice = num
@@ -140,8 +141,8 @@ class ParseVoiceInputUseCase {
             }
         }
 
-        // 8. НАЗВАНИЕ: все оставшиеся слова, независимо от их начальной позиции
-        val stopWords = setOf("цена", "рублей", "руб", "купи", "за", "по", "товар", "стоит", "возьми", "скидка", "акция")
+        // 8. НАЗВАНИЕ: все оставшиеся смысловые слова
+        val stopWords = setOf("цена", "рублей", "рубль", "рубля", "руб", "купи", "за", "по", "товар", "стоит", "возьми", "скидка", "акция", "литр", "литра", "грамм", "килограмм")
         val candidateWords = text.split(Regex("""\s+"""))
             .map { it.filter { char -> char.isLetter() } }
             .filter { it.length >= 3 && it !in stopWords }

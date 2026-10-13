@@ -61,12 +61,12 @@ fun ProductCard(
     listener: ProductCardListener,
     modifier: Modifier = Modifier,
     recentNames: List<String> = emptyList(),
-    onDeleteRecentName: (String) -> Unit = {}
+    onDeleteRecentName: (String) -> Unit = {},
+    isVoiceTarget: Boolean = false
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val currentView = LocalView.current
-
     val priceFocusRequester = remember { FocusRequester() }
     val quantityFocusRequester = remember { FocusRequester() }
     val discountFocusRequester = remember { FocusRequester() }
@@ -74,8 +74,13 @@ fun ProductCard(
 
     val isDiscountOpen = item.discountType == DiscountType.PERCENT
     val isBest = calcResult?.isBestChoice == true
-    val borderColor =
-        if (isBest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+
+    val borderColor = when {
+        isVoiceTarget -> MaterialTheme.colorScheme.primary
+        isBest -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.outlineVariant
+    }
+    val borderWidth = if (isVoiceTarget || isBest) 2.dp else 1.dp
 
     val dismissKeyboardAndFocus = {
         dummyFocusRequester.requestFocus()
@@ -91,10 +96,13 @@ fun ProductCard(
                 onExit = { FocusRequester.Cancel }
             },
         shape = MaterialTheme.shapes.medium,
-        border = BorderStroke(if (isBest) 2.dp else 1.dp, borderColor),
+        border = BorderStroke(borderWidth, borderColor),
         colors = CardDefaults.cardColors(
-            containerColor = if (isBest) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
-            else MaterialTheme.colorScheme.surface
+            containerColor = when {
+                isVoiceTarget -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                isBest -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                else -> MaterialTheme.colorScheme.surface
+            }
         )
     ) {
         Column(
@@ -108,7 +116,6 @@ fun ProductCard(
                     .focusRequester(dummyFocusRequester)
                     .focusable()
             )
-
             val isFilled = item.name.isNotBlank() ||
                     item.priceInput.isNotBlank() ||
                     item.quantityInput.isNotBlank() ||
@@ -140,7 +147,6 @@ fun ProductCard(
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Поле Цены
                 Box(
                     modifier = Modifier
                         .weight(1.1f)
@@ -208,7 +214,6 @@ fun ProductCard(
                         .background(MaterialTheme.colorScheme.outlineVariant)
                 )
 
-                // Поле Количества
                 Row(
                     modifier = Modifier
                         .weight(1.3f)

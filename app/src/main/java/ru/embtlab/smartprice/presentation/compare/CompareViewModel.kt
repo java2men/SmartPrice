@@ -3,17 +3,29 @@ package ru.embtlab.smartprice.presentation.compare
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.embtlab.smartprice.data.local.SettingsDataStore
-import ru.embtlab.smartprice.domain.model.*
+import ru.embtlab.smartprice.domain.model.ComparisonConfig
+import ru.embtlab.smartprice.domain.model.DiscountType
+import ru.embtlab.smartprice.domain.model.ProductConstants
+import ru.embtlab.smartprice.domain.model.ProductItem
+import ru.embtlab.smartprice.domain.model.ProductUnit
+import ru.embtlab.smartprice.domain.model.SavedComparison
 import ru.embtlab.smartprice.domain.repository.ComparisonHistoryRepository
 import ru.embtlab.smartprice.domain.usecase.CalculateComparisonUseCase
 import ru.embtlab.smartprice.domain.usecase.GetHistoryUseCase
 import ru.embtlab.smartprice.domain.usecase.ParseVoiceInputUseCase
 import ru.embtlab.smartprice.domain.usecase.SaveComparisonUseCase
+import ru.embtlab.smartprice.domain.util.FuzzyMatcher
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 
 @HiltViewModel
@@ -27,17 +39,15 @@ class CompareViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CompareUiState())
-    val uiState = _uiState.asStateFlow()
+    val uiState: StateFlow<CompareUiState> = _uiState.asStateFlow()
 
     val history: StateFlow<List<SavedComparison>> = getHistoryUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Поток недавних названий товаров для шторки
     val recentProductNames: StateFlow<List<String>> = settingsDataStore.recentProductNamesFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private var lastBackupState: List<ProductItem>? = null
-
     private var nextProductNumber = ProductConstants.INITIAL_NEXT_PRODUCT_INDEX
 
     init {
@@ -85,8 +95,7 @@ class CompareViewModel @Inject constructor(
 
     fun addProduct() {
         if (_uiState.value.items.size >= ComparisonConfig.MAX_PRODUCTS_LIMIT) return
-
-        val nextIndex = _uiState.value.items.size + 1
+        val nextIndex = nextProductNumber++
         val newItem = ProductItem(name = "Товар $nextIndex")
         _uiState.update { state ->
             val updatedList = state.items + newItem
@@ -120,6 +129,101 @@ class CompareViewModel @Inject constructor(
         _uiState.update { it.copy(scanningProductId = null) }
     }
 
+    // ==========================================
+    // ЛОГИКА PUSH-TO-TALK (ВАРИАНТ 1)
+    // ==========================================
+
+    fun startPushToTalk(focusedCardId: String?) {
+        val targetId = resolveTargetCardId(focusedCardId)
+        _uiState.update {
+            it.copy(
+                isVoiceRecordingActive = true,
+                voiceTargetCardId = targetId
+            )
+        }
+    }
+
+    fun cancelPushToTalk() {
+        _uiState.update {
+            it.copy(
+                isVoiceRecordingActive = false,
+                voiceTargetCardId = null
+            )
+        }
+    }
+
+    fun onVoicePhraseCompleted(rawText: String) {
+        if (rawText.isBlank()) {
+            cancelPushToTalk()
+            return
+        }
+
+        val parsed = parseVoiceInputUseCase(rawText)
+        var targetId = _uiState.value.voiceTargetCardId
+
+        // Приоритет 4: семантический поиск существующей карточки по названию
+        if (!parsed.name.isNullOrBlank()) {
+            val matchedItem = _uiState.value.items.find { item ->
+                FuzzyMatcher.similarity(item.name, parsed.name) >= 0.72
+            }
+            if (matchedItem != null) {
+                targetId = matchedItem.id
+            }
+        }
+
+        // Приоритет 3: если свободных карточек не было — создаем новую
+        if (targetId == null) {
+            if (_uiState.value.items.size < ComparisonConfig.MAX_PRODUCTS_LIMIT) {
+                val nextIndex = nextProductNumber++
+                val newItem = ProductItem(name = parsed.name ?: "Товар $nextIndex")
+                val updatedList = _uiState.value.items + newItem
+                val (results, hasConflict) = calculateComparisonUseCase(updatedList)
+                _uiState.update {
+                    it.copy(items = updatedList, results = results, hasIncompatibleUnits = hasConflict)
+                }
+                targetId = newItem.id
+            } else {
+                targetId = _uiState.value.items.lastOrNull()?.id
+            }
+        }
+
+        targetId?.let { id ->
+            parsed.name?.let { onNameChanged(id, it) }
+            parsed.price?.let { onPriceChanged(id, it) }
+            parsed.quantity?.let { onQuantityChanged(id, it) }
+            parsed.unit?.let { onUnitChanged(id, it) }
+            parsed.discountType?.let { onDiscountTypeChanged(id, it) }
+            parsed.discountPercent?.let { onCustomDiscountChanged(id, it) }
+        }
+
+        _uiState.update {
+            it.copy(
+                isVoiceRecordingActive = false,
+                voiceTargetCardId = null
+            )
+        }
+    }
+
+    private fun resolveTargetCardId(focusedCardId: String?): String? {
+        val items = _uiState.value.items
+        // Приоритет 1: активный фокус
+        if (!focusedCardId.isNullOrBlank() && items.any { it.id == focusedCardId }) {
+            return focusedCardId
+        }
+        // Приоритет 2: первая незаполненная карточка
+        val firstEmpty = items.find { it.priceInput.isBlank() || it.quantityInput.isBlank() }
+        if (firstEmpty != null) {
+            return firstEmpty.id
+        }
+        // Приоритет 3: создание новой карточки
+        if (items.size < ComparisonConfig.MAX_PRODUCTS_LIMIT) {
+            return null // Создастся по завершении фразы
+        }
+        return items.lastOrNull()?.id
+    }
+
+    // ==========================================
+
     fun openSaveDialog() {
         val names = _uiState.value.items.mapNotNull { it.name.ifBlank { null } }
         val defaultTitle = if (names.isNotEmpty()) names.joinToString(" vs ") else ""
@@ -144,14 +248,13 @@ class CompareViewModel @Inject constructor(
 
     fun restoreComparison(record: SavedComparison) {
         if (record.items.isEmpty()) return
-
         val (results, hasConflict) = calculateComparisonUseCase(record.items)
         _uiState.update { state ->
             state.copy(
                 items = record.items,
                 results = results,
                 hasIncompatibleUnits = hasConflict,
-                isHistorySheetOpen = false // Сворачиваем шторку после восстановления
+                isHistorySheetOpen = false
             )
         }
     }
@@ -159,19 +262,14 @@ class CompareViewModel @Inject constructor(
     private fun saveCurrentComparison(customTitle: String? = null) {
         val best = _uiState.value.results.find { it.isBestChoice } ?: return
         val secondBest = _uiState.value.results.filterNot { it.isBestChoice }.minByOrNull { it.unitPrice }
-
-        // Берем базовую единицу напрямую из категории единицы измерения:
         val baseUnit = best.product.unit.category.baseLabel
-
         val savings = if (secondBest != null && secondBest.percentMoreExpensive > 0) {
-            String.format(Locale.US, "Выгода %.1f%%", secondBest.percentMoreExpensive)
+            String.format(Locale.US, "Выгоднее на %.1f%%", secondBest.percentMoreExpensive)
         } else {
-            "Выгодная позиция"
+            "Выгодная покупка"
         }
-
         val defaultTitle = "Сравнение " + SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date())
         val finalTitle = if (!customTitle.isNullOrBlank()) customTitle else defaultTitle
-
         val record = SavedComparison(
             title = finalTitle,
             bestProductName = best.product.name.ifBlank { "Товар" },
@@ -179,33 +277,9 @@ class CompareViewModel @Inject constructor(
             savingsInfo = savings,
             items = _uiState.value.items
         )
-
         viewModelScope.launch {
             saveComparisonUseCase(record)
         }
-    }
-
-    fun startVoiceInput(productId: String) {
-        _uiState.update { it.copy(voiceInputProductId = productId) }
-    }
-
-    fun stopVoiceInput() {
-        _uiState.update { it.copy(voiceInputProductId = null) }
-    }
-
-    fun onVoiceResult(productId: String, rawText: String) {
-        val parsed = parseVoiceInputUseCase(rawText)
-
-        parsed.name?.let { onNameChanged(productId, it) }
-        parsed.price?.let { onPriceChanged(productId, it) }
-        parsed.quantity?.let { onQuantityChanged(productId, it) }
-        parsed.unit?.let { onUnitChanged(productId, it) }
-
-        // Применение скидок
-        parsed.discountType?.let { onDiscountTypeChanged(productId, it) }
-        parsed.discountPercent?.let { onCustomDiscountChanged(productId, it) }
-
-        stopVoiceInput()
     }
 
     fun deleteHistoryItem(id: Long) {
@@ -272,5 +346,4 @@ class CompareViewModel @Inject constructor(
         }
         lastBackupState = null
     }
-
 }

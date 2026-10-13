@@ -22,8 +22,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -41,9 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusProperties
@@ -62,7 +58,6 @@ import ru.embtlab.smartprice.presentation.compare.components.CameraOcrScanner
 import ru.embtlab.smartprice.presentation.compare.components.DiscountSelectorRow
 import ru.embtlab.smartprice.presentation.compare.components.ProductCardListener
 import ru.embtlab.smartprice.presentation.compare.components.UnitDropdownMenu
-import ru.embtlab.smartprice.presentation.compare.components.dialogs.VoiceInputDialog
 import ru.embtlab.smartprice.presentation.compare.util.InputFormatters
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
 import ru.embtlab.smartprice.presentation.theme.icons.ArrowBack
@@ -86,13 +81,10 @@ fun EditProductScreen(
     }
 
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
-    val recordAudioPermissionState = rememberPermissionState(Manifest.permission.RECORD_AUDIO)
-
     val focusManager = LocalFocusManager.current
     val allCatalogPresets = ProductConstants.CATALOG_PRODUCT_PRESETS
-    var isCaptureMenuOpen by remember { mutableStateOf(false) }
 
-    // 1. Полноэкранный OCR-сканер через камеру
+    // Полноэкранный OCR-сканер камеры для конкретного товара
     if (uiState.scanningProductId == productId) {
         if (cameraPermissionState.status.isGranted) {
             CameraOcrScanner(
@@ -121,32 +113,6 @@ fun EditProductScreen(
         return
     }
 
-    // 2. Голосовой ввод данных через системный SpeechRecognizer
-    if (uiState.voiceInputProductId == productId) {
-        if (recordAudioPermissionState.status.isGranted) {
-            VoiceInputDialog(
-                onResult = { recognizedText ->
-                    viewModel.onVoiceResult(productId, recognizedText)
-                },
-                onDismiss = { viewModel.stopVoiceInput() }
-            )
-        } else {
-            AlertDialog(
-                onDismissRequest = { viewModel.stopVoiceInput() },
-                title = { Text("Требуется доступ к микрофону") },
-                text = { Text("Микрофон необходим для быстрого голосового ввода цены и веса товара.") },
-                confirmButton = {
-                    Button(onClick = { recordAudioPermissionState.launchPermissionRequest() }) {
-                        Text("Предоставить")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { viewModel.stopVoiceInput() }) { Text("Отмена") }
-                }
-            )
-        }
-    }
-
     val cardListener = remember(viewModel) {
         object : ProductCardListener {
             override fun onNameChange(id: String, name: String) = viewModel.onNameChanged(id, name)
@@ -156,7 +122,6 @@ fun EditProductScreen(
             override fun onDiscountTypeChange(id: String, type: DiscountType) = viewModel.onDiscountTypeChanged(id, type)
             override fun onCustomDiscountChange(id: String, percent: String) = viewModel.onCustomDiscountChanged(id, percent)
             override fun onScanClick(id: String) = viewModel.startScanning(id)
-            override fun onVoiceClick(id: String) = viewModel.startVoiceInput(id)
             override fun onDelete(id: String) = viewModel.onTrashClick(id)
             override fun onCardFocused(id: String) {}
         }
@@ -172,35 +137,12 @@ fun EditProductScreen(
                     }
                 },
                 actions = {
-                    // Единая кнопка захвата (Камера / Голос)
-                    Box {
-                        IconButton(onClick = { isCaptureMenuOpen = true }) {
-                            Icon(
-                                imageVector = AppIcons.Default.Camera,
-                                contentDescription = "Быстрый ввод (Камера / Голос)",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        DropdownMenu(
-                            expanded = isCaptureMenuOpen,
-                            onDismissRequest = { isCaptureMenuOpen = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("📷 Скан ценника") },
-                                onClick = {
-                                    isCaptureMenuOpen = false
-                                    viewModel.startScanning(item.id)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("🎙️ Сказать голосом") },
-                                onClick = {
-                                    isCaptureMenuOpen = false
-                                    viewModel.startVoiceInput(item.id)
-                                }
-                            )
-                        }
+                    IconButton(onClick = { viewModel.startScanning(item.id) }) {
+                        Icon(
+                            imageVector = AppIcons.Default.Camera,
+                            contentDescription = "Сканировать ценник",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -241,7 +183,7 @@ fun EditProductScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            // БЛОК 1: НАЗВАНИЕ И ЧИПСЫ ВЫБОРА
+            // БЛОК 1: НАЗВАНИЕ ТОВАРА
             Card(
                 shape = MaterialTheme.shapes.medium,
                 colors = CardDefaults.cardColors(
@@ -290,7 +232,7 @@ fun EditProductScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    // Недавние частые выборы
+                    // Секция недавних названий
                     if (recentNames.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(14.dp))
                         Text(
@@ -338,7 +280,7 @@ fun EditProductScreen(
                         }
                     }
 
-                    // Базовый каталог товаров
+                    // Каталог базовых товаров
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
                         text = "Каталог товаров",
