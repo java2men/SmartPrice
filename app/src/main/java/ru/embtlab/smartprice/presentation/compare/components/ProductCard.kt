@@ -4,6 +4,7 @@ import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,6 +68,7 @@ fun ProductCard(
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val currentView = LocalView.current
+
     val priceFocusRequester = remember { FocusRequester() }
     val quantityFocusRequester = remember { FocusRequester() }
     val discountFocusRequester = remember { FocusRequester() }
@@ -75,6 +77,7 @@ fun ProductCard(
     val isDiscountOpen = item.discountType == DiscountType.PERCENT
     val isBest = calcResult?.isBestChoice == true
 
+    // 2. Явная визуальная индикация: рамка и фон активной карточки
     val borderColor = when {
         isVoiceTarget -> MaterialTheme.colorScheme.primary
         isBest -> MaterialTheme.colorScheme.primary
@@ -92,6 +95,8 @@ fun ProductCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
+            // 1. Тап по телу карточки активирует фокус
+            .clickable { listener.onCardFocused(item.id) }
             .focusProperties {
                 onExit = { FocusRequester.Cancel }
             },
@@ -116,6 +121,7 @@ fun ProductCard(
                     .focusRequester(dummyFocusRequester)
                     .focusable()
             )
+
             val isFilled = item.name.isNotBlank() ||
                     item.priceInput.isNotBlank() ||
                     item.quantityInput.isNotBlank() ||
@@ -198,7 +204,7 @@ fun ProductCard(
                         )
                         if (item.priceInput.isNotEmpty()) {
                             Text(
-                                text = "₽",
+                                text = " ₽",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.outline

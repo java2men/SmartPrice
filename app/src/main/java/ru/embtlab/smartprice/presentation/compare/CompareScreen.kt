@@ -10,6 +10,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
@@ -52,6 +53,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -93,27 +95,26 @@ fun CompareScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val recentNames by viewModel.recentProductNames.collectAsState()
-
     val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
     val recordAudioPermissionState = rememberPermissionState(Manifest.permission.RECORD_AUDIO)
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+
     val focusManager = LocalFocusManager.current
     val isKeyboardOpen = WindowInsets.isImeVisible
 
     var focusedCardId by remember { mutableStateOf<String?>(null) }
     var focusTrigger by remember { mutableLongStateOf(0L) }
-
     var wasKeyboardOpen by remember { mutableStateOf(false) }
+
     LaunchedEffect(isKeyboardOpen) {
         if (isKeyboardOpen) {
             wasKeyboardOpen = true
         } else if (wasKeyboardOpen) {
             wasKeyboardOpen = false
             focusManager.clearFocus()
-            focusedCardId = null
         }
     }
 
@@ -123,7 +124,7 @@ fun CompareScreen(
         if (rawIndex == -1) null else (if (uiState.hasIncompatibleUnits) rawIndex + 1 else rawIndex)
     }
 
-    // OCR-сканер камеры
+    // OCR-сканер
     if (uiState.scanningProductId != null) {
         if (cameraPermissionState.status.isGranted) {
             CameraOcrScanner(
@@ -139,10 +140,10 @@ fun CompareScreen(
             AlertDialog(
                 onDismissRequest = { viewModel.stopScanning() },
                 title = { Text("Требуется доступ к камере") },
-                text = { Text("Камера необходима для быстрого распознавания ценников.") },
+                text = { Text("Разрешите приложению использовать камеру для распознавания ценников.") },
                 confirmButton = {
                     Button(onClick = { cameraPermissionState.launchPermissionRequest() }) {
-                        Text("Предоставить")
+                        Text("Разрешить")
                     }
                 },
                 dismissButton = {
@@ -174,8 +175,26 @@ fun CompareScreen(
         }
     }
 
+    // 3. Динамический заголовок карточки в контексте цели
+    val targetCardTitle = remember(focusedCardId, uiState.items) {
+        val targetItem = if (!focusedCardId.isNullOrBlank()) {
+            uiState.items.find { it.id == focusedCardId }
+        } else {
+            uiState.items.find { it.priceInput.isBlank() || it.quantityInput.isBlank() } ?: uiState.items.firstOrNull()
+        }
+        targetItem?.name.orEmpty().ifBlank { "Товар" }
+    }
+
     Scaffold(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            // 4. Сброс по тапу в пустоту (на свободное место экрана)
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = {
+                    focusManager.clearFocus()
+                    focusedCardId = null
+                })
+            },
         snackbarHost = {
             SnackbarHost(
                 hostState = snackbarHostState,
@@ -184,7 +203,7 @@ fun CompareScreen(
         },
         topBar = {
             TopAppBar(
-                title = { Text("Умная Цена") },
+                title = { Text("Умная цена") },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 actions = {
                     if (canSaveResult) {
@@ -204,8 +223,8 @@ fun CompareScreen(
                             coroutineScope.launch {
                                 snackbarHostState.currentSnackbarData?.dismiss()
                                 val result = snackbarHostState.showSnackbar(
-                                    message = "Все товары очищены",
-                                    actionLabel = "Отменить",
+                                    message = "Список очищен",
+                                    actionLabel = "Отмена",
                                     duration = SnackbarDuration.Short
                                 )
                                 if (result == SnackbarResult.ActionPerformed) {
@@ -215,7 +234,7 @@ fun CompareScreen(
                         }) {
                             Icon(
                                 imageVector = AppIcons.Default.Refresh,
-                                contentDescription = "Сброс"
+                                contentDescription = "Очистить"
                             )
                         }
                     }
@@ -235,11 +254,7 @@ fun CompareScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    val targetCardTitle = remember(uiState.voiceTargetCardId, uiState.items) {
-                        uiState.items.find { it.id == uiState.voiceTargetCardId }?.name.orEmpty().ifBlank { "Новый товар" }
-                    }
-
-                    // Плавающая кнопка Push-to-Talk (Вариант 1)
+                    // Кнопка голосового ввода через системный диалог
                     VoiceHoldToTalkButton(
                         targetCardTitle = targetCardTitle,
                         hasAudioPermission = recordAudioPermissionState.status.isGranted,
@@ -249,7 +264,7 @@ fun CompareScreen(
                         onCancelRecording = { viewModel.cancelPushToTalk() }
                     )
 
-                    // Кнопка добавления (+) со счетчиком
+                    // Добавление новой карточки
                     BadgedBox(
                         badge = {
                             Badge(
@@ -309,7 +324,7 @@ fun CompareScreen(
                         ) {
                             Icon(
                                 imageVector = AppIcons.Default.Add,
-                                contentDescription = if (uiState.canAddMore) "Добавить товар" else "Лимит"
+                                contentDescription = if (uiState.canAddMore) "Добавить товар" else "Лимит достигнут"
                             )
                         }
                     }
@@ -335,7 +350,7 @@ fun CompareScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "Нельзя сравнивать товары разных категорий (например, вес и объём)",
+                            text = "Разные типы мер. Сравнение невозможно.",
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(12.dp)
@@ -343,9 +358,11 @@ fun CompareScreen(
                     }
                 }
             }
+
             items(uiState.items, key = { it.id }) { item ->
                 val calcResult = uiState.results.find { it.product.id == item.id }
-                val isTarget = (item.id == uiState.voiceTargetCardId && uiState.isVoiceRecordingActive)
+                // Активная карточка подсвечивается, если выбран её фокус
+                val isTarget = (item.id == focusedCardId)
 
                 when (uiState.cardStyle) {
                     CardStylePreset.CLASSIC -> {
@@ -366,7 +383,8 @@ fun CompareScreen(
                             canDelete = uiState.items.size > 2,
                             listener = cardListener,
                             recentNames = recentNames,
-                            onDeleteRecentName = { viewModel.removeRecentName(it) }
+                            onDeleteRecentName = { viewModel.removeRecentName(it) },
+                            isVoiceTarget = isTarget
                         )
                     }
                     CardStylePreset.FULL_SCREEN_EDITOR -> {

@@ -4,6 +4,7 @@ import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -92,7 +93,6 @@ fun SmartSingleFieldCard(
     }
 
     var isFieldFocused by remember { mutableStateOf(false) }
-
     var rawText by remember {
         mutableStateOf(
             if (item.priceInput.isNotEmpty() && item.quantityInput.isNotEmpty())
@@ -116,6 +116,7 @@ fun SmartSingleFieldCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .clickable { listener.onCardFocused(item.id) }
             .focusProperties {
                 onExit = { FocusRequester.Cancel }
             },
@@ -179,7 +180,7 @@ fun SmartSingleFieldCard(
                 ) {
                     if (rawText.isEmpty()) {
                         Text(
-                            text = "Цена и кол-во",
+                            text = "Цена / Кол-во",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
@@ -189,7 +190,6 @@ fun SmartSingleFieldCard(
                         onValueChange = { input ->
                             val filtered = input.filter { it.isDigit() || it == '.' || it == ',' || it == ' ' || it == '/' }
                             rawText = filtered
-
                             val tokens = filtered.split(Regex("""[\s/]+""")).filter { it.isNotEmpty() }
                             if (tokens.isEmpty()) {
                                 listener.onPriceChange(item.id, "")
@@ -197,7 +197,6 @@ fun SmartSingleFieldCard(
                             } else {
                                 val cleanPrice = InputFormatters.sanitizePrice(tokens[0], item.priceInput)
                                 listener.onPriceChange(item.id, cleanPrice)
-
                                 if (tokens.size > 1) {
                                     val cleanQuantity = InputFormatters.sanitizeQuantity(tokens[1], item.quantityInput)
                                     listener.onQuantityChange(item.id, cleanQuantity)
