@@ -1,3 +1,4 @@
+// SmartPriceApp.kt
 package ru.embtlab.smartprice
 
 import android.app.Application
