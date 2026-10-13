@@ -1,6 +1,12 @@
 package ru.embtlab.smartprice.presentation.compare
 
 import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.speech.RecognizerIntent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -54,6 +61,7 @@ import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import ru.embtlab.smartprice.domain.model.DiscountType
 import ru.embtlab.smartprice.domain.model.ProductConstants
+import ru.embtlab.smartprice.domain.usecase.ParseVoiceInputUseCase
 import ru.embtlab.smartprice.presentation.compare.components.CameraOcrScanner
 import ru.embtlab.smartprice.presentation.compare.components.DiscountSelectorRow
 import ru.embtlab.smartprice.presentation.compare.components.ProductCardListener
@@ -63,6 +71,7 @@ import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
 import ru.embtlab.smartprice.presentation.theme.icons.ArrowBack
 import ru.embtlab.smartprice.presentation.theme.icons.Camera
 import ru.embtlab.smartprice.presentation.theme.icons.Close
+import ru.embtlab.smartprice.presentation.theme.icons.Mic
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
@@ -80,11 +89,36 @@ fun EditProductScreen(
         return
     }
 
-    val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
+    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+    val cameraPermissionState = rememberPermissionState(Manifest.permission.CAMERA)
+    val audioPermissionState = rememberPermissionState(Manifest.permission.RECORD_AUDIO)
+    val parseVoiceInputUseCase = remember { ParseVoiceInputUseCase() }
+
     val allCatalogPresets = ProductConstants.CATALOG_PRODUCT_PRESETS
 
-    // Полноэкранный OCR-сканер камеры для конкретного товара
+    // Системный голосовой ввод внутри экрана редактирования
+    val speechLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spokenText = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+
+            if (!spokenText.isNullOrBlank()) {
+                val parsed = parseVoiceInputUseCase(spokenText)
+                parsed.name?.let { viewModel.onNameChanged(productId, it) }
+                parsed.price?.let { viewModel.onPriceChanged(productId, it) }
+                parsed.quantity?.let { viewModel.onQuantityChanged(productId, it) }
+                parsed.unit?.let { viewModel.onUnitChanged(productId, it) }
+                parsed.discountType?.let { viewModel.onDiscountTypeChanged(productId, it) }
+                parsed.discountPercent?.let { viewModel.onCustomDiscountChanged(productId, it) }
+            }
+        }
+    }
+
+    // Режим OCR-сканера
     if (uiState.scanningProductId == productId) {
         if (cameraPermissionState.status.isGranted) {
             CameraOcrScanner(
@@ -99,10 +133,10 @@ fun EditProductScreen(
             AlertDialog(
                 onDismissRequest = { viewModel.stopScanning() },
                 title = { Text("Требуется доступ к камере") },
-                text = { Text("Камера необходима для быстрого распознавания ценников.") },
+                text = { Text("Разрешите приложению использовать камеру для распознавания ценников.") },
                 confirmButton = {
                     Button(onClick = { cameraPermissionState.launchPermissionRequest() }) {
-                        Text("Предоставить")
+                        Text("Разрешить")
                     }
                 },
                 dismissButton = {
@@ -137,6 +171,42 @@ fun EditProductScreen(
                     }
                 },
                 actions = {
+                    // КНОПКА МИКРОФОНА В ШАПКЕ
+                    IconButton(
+                        onClick = {
+                            if (!audioPermissionState.status.isGranted) {
+                                audioPermissionState.launchPermissionRequest()
+                                return@IconButton
+                            }
+
+                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(
+                                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                                )
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ru-RU")
+                                putExtra(
+                                    RecognizerIntent.EXTRA_PROMPT,
+                                    "Заполняем: ${item.name.ifBlank { "Товар" }}\n(Например: молоко 1 литр 50 рублей)"
+                                )
+                            }
+
+                            try {
+                                speechLauncher.launch(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Голосовой ввод недоступен", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = AppIcons.Default.Mic,
+                            contentDescription = "Голосовой ввод",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    // КНОПКА КАМЕРЫ (OCR)
                     IconButton(onClick = { viewModel.startScanning(item.id) }) {
                         Icon(
                             imageVector = AppIcons.Default.Camera,
@@ -183,7 +253,7 @@ fun EditProductScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            // БЛОК 1: НАЗВАНИЕ ТОВАРА
+            // Блок 1: Название
             Card(
                 shape = MaterialTheme.shapes.medium,
                 colors = CardDefaults.cardColors(
@@ -210,7 +280,7 @@ fun EditProductScreen(
                                 viewModel.onNameChanged(item.id, it)
                             }
                         },
-                        placeholder = { Text("Введите название (напр. Сметана)") },
+                        placeholder = { Text("Название (например, Сыр)") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(
                             capitalization = KeyboardCapitalization.Sentences,
@@ -232,7 +302,6 @@ fun EditProductScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    // Секция недавних названий
                     if (recentNames.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(14.dp))
                         Text(
@@ -261,10 +330,8 @@ fun EditProductScreen(
                                         ) {
                                             Icon(
                                                 imageVector = AppIcons.Default.Close,
-                                                contentDescription = "Удалить из недавних",
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                                    alpha = 0.7f
-                                                ),
+                                                contentDescription = "Удалить",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                                 modifier = Modifier.size(12.dp)
                                             )
                                         }
@@ -280,7 +347,6 @@ fun EditProductScreen(
                         }
                     }
 
-                    // Каталог базовых товаров
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
                         text = "Каталог товаров",
@@ -309,7 +375,7 @@ fun EditProductScreen(
                 }
             }
 
-            // БЛОК 2: СТОИМОСТЬ И ОБЪЁМ
+            // Блок 2: Стоимость и объём
             Card(
                 shape = MaterialTheme.shapes.medium,
                 colors = CardDefaults.cardColors(
@@ -352,8 +418,7 @@ fun EditProductScreen(
                         OutlinedTextField(
                             value = item.quantityInput,
                             onValueChange = {
-                                val sanitized =
-                                    InputFormatters.sanitizeQuantity(it, item.quantityInput)
+                                val sanitized = InputFormatters.sanitizeQuantity(it, item.quantityInput)
                                 viewModel.onQuantityChanged(item.id, sanitized)
                             },
                             label = { Text("Количество") },
@@ -374,7 +439,7 @@ fun EditProductScreen(
                 }
             }
 
-            // БЛОК 3: АКЦИИ И СКИДКИ
+            // Блок 3: Акции и скидки
             Card(
                 shape = MaterialTheme.shapes.medium,
                 colors = CardDefaults.cardColors(

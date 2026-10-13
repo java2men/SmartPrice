@@ -244,6 +244,7 @@ fun CompareScreen(
                 }
             )
         },
+
         floatingActionButton = {
             AnimatedVisibility(
                 visible = !isKeyboardOpen,
@@ -254,17 +255,20 @@ fun CompareScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Кнопка голосового ввода через системный диалог
-                    VoiceHoldToTalkButton(
-                        targetCardTitle = targetCardTitle,
-                        hasAudioPermission = recordAudioPermissionState.status.isGranted,
-                        onRequireAudioPermission = { recordAudioPermissionState.launchPermissionRequest() },
-                        onStartRecording = { viewModel.startPushToTalk(focusedCardId) },
-                        onStopRecording = { text -> viewModel.onVoicePhraseCompleted(text) },
-                        onCancelRecording = { viewModel.cancelPushToTalk() }
-                    )
+                    // Микрофон отображается снизу ТОЛЬКО в режимах CLASSIC и SMART_SINGLE_FIELD.
+                    // В режиме FULL_SCREEN_EDITOR (компактный список) он скрыт снизу, т.к. перенесён в EditProductScreen.
+                    if (uiState.cardStyle != CardStylePreset.FULL_SCREEN_EDITOR) {
+                        VoiceHoldToTalkButton(
+                            targetCardTitle = targetCardTitle,
+                            hasAudioPermission = recordAudioPermissionState.status.isGranted,
+                            onRequireAudioPermission = { recordAudioPermissionState.launchPermissionRequest() },
+                            onStartRecording = { viewModel.startPushToTalk(focusedCardId) },
+                            onStopRecording = { text -> viewModel.onVoicePhraseCompleted(text) },
+                            onCancelRecording = { viewModel.cancelPushToTalk() }
+                        )
+                    }
 
-                    // Добавление новой карточки
+                    // Кнопка добавления новой карточки [+]
                     BadgedBox(
                         badge = {
                             Badge(
@@ -331,6 +335,7 @@ fun CompareScreen(
                 }
             }
         }
+
     ) { innerPadding ->
         AutoScrollCompareList(
             state = listState,
