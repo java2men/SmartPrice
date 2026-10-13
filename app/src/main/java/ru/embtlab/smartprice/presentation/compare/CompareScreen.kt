@@ -177,12 +177,12 @@ fun CompareScreen(
 
     // 3. Динамический заголовок карточки в контексте цели
     val targetCardTitle = remember(focusedCardId, uiState.items) {
-        val targetItem = if (!focusedCardId.isNullOrBlank()) {
-            uiState.items.find { it.id == focusedCardId }
+        if (!focusedCardId.isNullOrBlank()) {
+            val item = uiState.items.find { it.id == focusedCardId }
+            item?.name.orEmpty().ifBlank { "Выбранный товар" }
         } else {
-            uiState.items.find { it.priceInput.isBlank() || it.quantityInput.isBlank() } ?: uiState.items.firstOrNull()
+            "Новый товар"
         }
-        targetItem?.name.orEmpty().ifBlank { "Товар" }
     }
 
     Scaffold(

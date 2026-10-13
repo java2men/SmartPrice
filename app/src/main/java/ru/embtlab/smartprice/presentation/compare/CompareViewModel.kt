@@ -206,23 +206,20 @@ class CompareViewModel @Inject constructor(
 
     private fun resolveTargetCardId(focusedCardId: String?): String? {
         val items = _uiState.value.items
-        // Приоритет 1: активный фокус
+
+        // 1. Если есть активный фокус — пишем строго в выбранную карточку
         if (!focusedCardId.isNullOrBlank() && items.any { it.id == focusedCardId }) {
             return focusedCardId
         }
-        // Приоритет 2: первая незаполненная карточка
-        val firstEmpty = items.find { it.priceInput.isBlank() || it.quantityInput.isBlank() }
-        if (firstEmpty != null) {
-            return firstEmpty.id
-        }
-        // Приоритет 3: создание новой карточки
+
+        // 2. Если фокуса нет — возвращаем null, чтобы создать новую карточку
         if (items.size < ComparisonConfig.MAX_PRODUCTS_LIMIT) {
-            return null // Создастся по завершении фразы
+            return null // Сигнал для onVoicePhraseCompleted создать новый товар
         }
+
+        // Страховка при достижении лимита товаров (пишем в последний)
         return items.lastOrNull()?.id
     }
-
-    // ==========================================
 
     fun openSaveDialog() {
         val names = _uiState.value.items.mapNotNull { it.name.ifBlank { null } }
