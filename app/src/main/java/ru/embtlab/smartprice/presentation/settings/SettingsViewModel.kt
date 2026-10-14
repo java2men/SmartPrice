@@ -21,7 +21,7 @@ class SettingsViewModel @Inject constructor(
     val settings: StateFlow<AppSettings?> = dataStore.settingsFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = null // null сигнализирует о том, что настройки ещё читаются с диска
+        initialValue = null
     )
 
     fun onPresetChanged(preset: CardStylePreset) {
@@ -34,5 +34,13 @@ class SettingsViewModel @Inject constructor(
 
     fun onDynamicColorChanged(enabled: Boolean) {
         viewModelScope.launch { dataStore.setDynamicColor(enabled) }
+    }
+
+    fun onVoiceInputEnabledChanged(enabled: Boolean) {
+        viewModelScope.launch { dataStore.setVoiceInputEnabled(enabled) }
+    }
+
+    fun onOcrScannerEnabledChanged(enabled: Boolean) {
+        viewModelScope.launch { dataStore.setOcrScannerEnabled(enabled) }
     }
 }

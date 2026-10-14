@@ -66,7 +66,8 @@ fun SmartSingleFieldCard(
     recentNames: List<String> = emptyList(),
     onDeleteRecentName: (String) -> Unit = {},
     isVoiceTarget: Boolean = false,
-    isFilledExplicit: Boolean = false
+    isFilledExplicit: Boolean = false,
+    showScanButton: Boolean = true,
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -157,7 +158,8 @@ fun SmartSingleFieldCard(
                 isFilled = isFilledExplicit,
                 listener = listener,
                 recentNames = recentNames,
-                onDeleteRecentName = onDeleteRecentName
+                onDeleteRecentName = onDeleteRecentName,
+                showScanButton = showScanButton,
             )
 
             Spacer(modifier = Modifier.height(10.dp))

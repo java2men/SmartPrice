@@ -13,7 +13,9 @@ data class CompareUiState(
     val results: List<CalculatedItem> = emptyList(),
     val hasIncompatibleUnits: Boolean = false,
     val cardStyle: CardStylePreset = CardStylePreset.CLASSIC,
-    val isSettingsLoaded: Boolean = false, // <-- Флаг готовности настроек
+    val isSettingsLoaded: Boolean = false,
+    val isVoiceInputEnabled: Boolean = true,
+    val isOcrScannerEnabled: Boolean = true,
     val isHistorySheetOpen: Boolean = false,
     val isSaveDialogOpen: Boolean = false,
     val saveDialogTitleInput: String = "",

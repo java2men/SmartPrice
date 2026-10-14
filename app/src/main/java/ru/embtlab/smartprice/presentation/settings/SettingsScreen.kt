@@ -68,7 +68,6 @@ fun SettingsScreen(
     ) { innerPadding ->
         val currentSettings = settingsState
 
-        // Пока настройки считываются из DataStore — не рисуем список с фальшивыми значениями
         if (currentSettings == null) {
             Box(
                 modifier = Modifier
@@ -132,7 +131,34 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(vertical = 16.dp)
         ) {
-            // Блок 1: Внешний вид карточек
+            // Блок 1: Способы ввода (Голос и Сканер)
+            item {
+                SettingsSection(title = "Быстрый ввод") {
+                    SettingsItemRow(
+                        title = "Голосовой ввод",
+                        subtitle = "Кнопка диктовки параметров товара",
+                        trailing = {
+                            Switch(
+                                checked = currentSettings.isVoiceInputEnabled,
+                                onCheckedChange = { viewModel.onVoiceInputEnabledChanged(it) }
+                            )
+                        }
+                    )
+                    HorizontalDivider()
+                    SettingsItemRow(
+                        title = "Сканер ценников",
+                        subtitle = "Распознавание цены и веса через камеру",
+                        trailing = {
+                            Switch(
+                                checked = currentSettings.isOcrScannerEnabled,
+                                onCheckedChange = { viewModel.onOcrScannerEnabledChanged(it) }
+                            )
+                        }
+                    )
+                }
+            }
+
+            // Блок 2: Внешний вид карточек
             item {
                 SettingsSection(title = "Интерфейс сравнения") {
                     SettingsItemRow(
@@ -143,7 +169,7 @@ fun SettingsScreen(
                 }
             }
 
-            // Блок 2: Оформление приложения
+            // Блок 3: Оформление приложения
             item {
                 SettingsSection(title = "Внешний вид") {
                     SettingsItemRow(
@@ -167,7 +193,7 @@ fun SettingsScreen(
                 }
             }
 
-            // Блок 3: О приложении
+            // Блок 4: О приложении
             item {
                 SettingsSection(title = "О приложении") {
                     SettingsItemRow(

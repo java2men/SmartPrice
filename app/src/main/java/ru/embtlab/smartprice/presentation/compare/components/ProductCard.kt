@@ -64,7 +64,8 @@ fun ProductCard(
     recentNames: List<String> = emptyList(),
     onDeleteRecentName: (String) -> Unit = {},
     isVoiceTarget: Boolean = false,
-    isFilledExplicit: Boolean = false
+    isFilledExplicit: Boolean = false,
+    showScanButton: Boolean = true,
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -136,7 +137,8 @@ fun ProductCard(
                 listener = listener,
                 isFilled = isFilledExplicit,
                 recentNames = recentNames,
-                onDeleteRecentName = onDeleteRecentName
+                onDeleteRecentName = onDeleteRecentName,
+                showScanButton = showScanButton,
             )
 
             Spacer(modifier = Modifier.height(10.dp))

@@ -58,7 +58,9 @@ class CompareViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         cardStyle = settings.cardPreset,
-                        isSettingsLoaded = true // Настройки прочитаны
+                        isVoiceInputEnabled = settings.isVoiceInputEnabled,
+                        isOcrScannerEnabled = settings.isOcrScannerEnabled,
+                        isSettingsLoaded = true,
                     )
                 }
             }

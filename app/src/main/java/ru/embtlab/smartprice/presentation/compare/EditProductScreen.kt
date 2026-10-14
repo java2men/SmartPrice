@@ -174,30 +174,34 @@ fun EditProductScreen(
                     }
                 },
                 actions = {
-                    // КНОПКА МИКРОФОНА В ШАПКЕ
-                    IconButton(
-                        onClick = {
-                            if (!audioPermissionState.status.isGranted) {
-                                audioPermissionState.launchPermissionRequest()
-                            } else {
-                                isVoiceDialogOpen = true
+                    // Микрофон
+                    if (uiState.isVoiceInputEnabled) {
+                        IconButton(
+                            onClick = {
+                                if (!audioPermissionState.status.isGranted) {
+                                    audioPermissionState.launchPermissionRequest()
+                                } else {
+                                    isVoiceDialogOpen = true
+                                }
                             }
+                        ) {
+                            Icon(
+                                imageVector = AppIcons.Default.Mic,
+                                contentDescription = "Голосовой ввод",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                         }
-                    ) {
-                        Icon(
-                            imageVector = AppIcons.Default.Mic,
-                            contentDescription = "Голосовой ввод",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
                     }
 
-                    // КНОПКА КАМЕРЫ (OCR)
-                    IconButton(onClick = { viewModel.startScanning(item.id) }) {
-                        Icon(
-                            imageVector = AppIcons.Default.Camera,
-                            contentDescription = "Сканировать ценник",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                    // Сканер ценников (OCR)
+                    if (uiState.isOcrScannerEnabled) {
+                        IconButton(onClick = { viewModel.startScanning(item.id) }) {
+                            Icon(
+                                imageVector = AppIcons.Default.Camera,
+                                contentDescription = "Камера",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)

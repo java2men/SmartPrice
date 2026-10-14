@@ -21,17 +21,23 @@ class SettingsDataStore(private val context: Context) {
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val RECENT_PRODUCT_NAMES = stringPreferencesKey("recent_product_names")
+        val VOICE_INPUT_ENABLED = booleanPreferencesKey("voice_input_enabled")
+        val OCR_SCANNER_ENABLED = booleanPreferencesKey("ocr_scanner_enabled")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { preferences ->
         val presetName = preferences[Keys.CARD_PRESET] ?: CardStylePreset.CLASSIC.name
         val themeName = preferences[Keys.THEME_MODE] ?: AppThemeMode.SYSTEM.name
         val dynamicColor = preferences[Keys.DYNAMIC_COLOR] ?: true
+        val voiceEnabled = preferences[Keys.VOICE_INPUT_ENABLED] ?: true
+        val ocrEnabled = preferences[Keys.OCR_SCANNER_ENABLED] ?: true
 
         AppSettings(
             cardPreset = runCatching { CardStylePreset.valueOf(presetName) }.getOrDefault(CardStylePreset.CLASSIC),
             themeMode = runCatching { AppThemeMode.valueOf(themeName) }.getOrDefault(AppThemeMode.SYSTEM),
-            dynamicColor = dynamicColor
+            dynamicColor = dynamicColor,
+            isVoiceInputEnabled = voiceEnabled,
+            isOcrScannerEnabled = ocrEnabled
         )
     }
 
@@ -72,5 +78,13 @@ class SettingsDataStore(private val context: Context) {
 
     suspend fun setDynamicColor(enabled: Boolean) {
         context.dataStore.edit { it[Keys.DYNAMIC_COLOR] = enabled }
+    }
+
+    suspend fun setVoiceInputEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.VOICE_INPUT_ENABLED] = enabled }
+    }
+
+    suspend fun setOcrScannerEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.OCR_SCANNER_ENABLED] = enabled }
     }
 }

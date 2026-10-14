@@ -276,7 +276,7 @@ fun CompareScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // Кнопка микрофона доступна в режимах CLASSIC и SMART_SINGLE_FIELD
-                    if (uiState.cardStyle != CardStylePreset.FULL_SCREEN_EDITOR) {
+                    if (uiState.cardStyle != CardStylePreset.FULL_SCREEN_EDITOR && uiState.isVoiceInputEnabled) {
                         VoiceHoldToTalkButton(
                             targetCardTitle = targetCardTitle,
                             hasAudioPermission = recordAudioPermissionState.status.isGranted,
@@ -415,7 +415,8 @@ fun CompareScreen(
                             recentNames = recentNames,
                             onDeleteRecentName = { viewModel.removeRecentName(it) },
                             isVoiceTarget = isTarget,
-                            isFilledExplicit = isItemFilled
+                            isFilledExplicit = isItemFilled,
+                            showScanButton = uiState.isOcrScannerEnabled,
                         )
                     }
                     CardStylePreset.SMART_SINGLE_FIELD -> {
@@ -427,7 +428,8 @@ fun CompareScreen(
                             recentNames = recentNames,
                             onDeleteRecentName = { viewModel.removeRecentName(it) },
                             isVoiceTarget = isTarget,
-                            isFilledExplicit = isItemFilled
+                            isFilledExplicit = isItemFilled,
+                            showScanButton = uiState.isOcrScannerEnabled,
                         )
                     }
                     CardStylePreset.FULL_SCREEN_EDITOR -> {

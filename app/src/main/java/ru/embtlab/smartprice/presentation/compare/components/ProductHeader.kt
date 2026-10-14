@@ -40,6 +40,7 @@ fun ProductHeader(
     listener: ProductCardListener,
     modifier: Modifier = Modifier,
     isFilled: Boolean = false,
+    showScanButton: Boolean = true,
     recentNames: List<String> = emptyList(),
     onDeleteRecentName: (String) -> Unit = {}
 ) {
@@ -93,12 +94,14 @@ fun ProductHeader(
         Spacer(modifier = Modifier.width(8.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { listener.onScanClick(id) }) {
-                Icon(
-                    imageVector = AppIcons.Default.Camera,
-                    contentDescription = "Сканировать",
-                    tint = MaterialTheme.colorScheme.primary
-                )
+            if (showScanButton) {
+                IconButton(onClick = { listener.onScanClick(id) }) {
+                    Icon(
+                        imageVector = AppIcons.Default.Camera,
+                        contentDescription = "Сканировать ценник",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
 
             if (canDelete || isFilled) {
