@@ -79,12 +79,22 @@ fun SmartSingleFieldCard(
     val isDiscountOpen = item.discountType == DiscountType.PERCENT
     val isBest = calcResult?.isBestChoice == true
 
+    // Разделяем семантику: secondary для активного фокуса ввода, primary для победителя "Выгодно"
     val borderColor = when {
-        isVoiceTarget -> MaterialTheme.colorScheme.primary
+        isVoiceTarget -> MaterialTheme.colorScheme.secondary
         isBest -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.outlineVariant
     }
-    val borderWidth = if (isVoiceTarget || isBest) 2.dp else 1.dp
+    val borderWidth = when {
+        isVoiceTarget -> 2.5.dp
+        isBest -> 2.dp
+        else -> 1.dp
+    }
+    val cardContainerColor = when {
+        isVoiceTarget -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f)
+        isBest -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+        else -> MaterialTheme.colorScheme.surface
+    }
 
     val dismissKeyboardAndFocus = {
         dummyFocusRequester.requestFocus()
@@ -124,11 +134,7 @@ fun SmartSingleFieldCard(
         shape = MaterialTheme.shapes.medium,
         border = BorderStroke(borderWidth, borderColor),
         colors = CardDefaults.cardColors(
-            containerColor = when {
-                isVoiceTarget -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                isBest -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
-                else -> MaterialTheme.colorScheme.surface
-            }
+            containerColor = cardContainerColor
         )
     ) {
         Column(
@@ -142,12 +148,6 @@ fun SmartSingleFieldCard(
                     .focusRequester(dummyFocusRequester)
                     .focusable()
             )
-//
-//            val isFilled = item.name.isNotBlank() ||
-//                    item.priceInput.isNotBlank() ||
-//                    item.quantityInput.isNotBlank() ||
-//                    item.customDiscountPercentInput.isNotBlank() ||
-//                    item.discountType != DiscountType.NONE
 
             ProductHeader(
                 id = item.id,
@@ -181,7 +181,7 @@ fun SmartSingleFieldCard(
                 ) {
                     if (rawText.isEmpty()) {
                         Text(
-                            text = "Цена / Кол-во",
+                            text = "Цена / Кол-во (напр. 150/0.9)",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )

@@ -78,13 +78,22 @@ fun ProductCard(
     val isDiscountOpen = item.discountType == DiscountType.PERCENT
     val isBest = calcResult?.isBestChoice == true
 
-    // 2. Явная визуальная индикация: рамка и фон активной карточки
+    // Разделяем семантику: secondary для активного фокуса ввода, primary для победителя "Выгодно"
     val borderColor = when {
-        isVoiceTarget -> MaterialTheme.colorScheme.primary
+        isVoiceTarget -> MaterialTheme.colorScheme.secondary
         isBest -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.outlineVariant
     }
-    val borderWidth = if (isVoiceTarget || isBest) 2.dp else 1.dp
+    val borderWidth = when {
+        isVoiceTarget -> 2.5.dp
+        isBest -> 2.dp
+        else -> 1.dp
+    }
+    val cardContainerColor = when {
+        isVoiceTarget -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f)
+        isBest -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+        else -> MaterialTheme.colorScheme.surface
+    }
 
     val dismissKeyboardAndFocus = {
         dummyFocusRequester.requestFocus()
@@ -96,7 +105,6 @@ fun ProductCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            // 1. Тап по телу карточки активирует фокус
             .clickable { listener.onCardFocused(item.id) }
             .focusProperties {
                 onExit = { FocusRequester.Cancel }
@@ -104,11 +112,7 @@ fun ProductCard(
         shape = MaterialTheme.shapes.medium,
         border = BorderStroke(borderWidth, borderColor),
         colors = CardDefaults.cardColors(
-            containerColor = when {
-                isVoiceTarget -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                isBest -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
-                else -> MaterialTheme.colorScheme.surface
-            }
+            containerColor = cardContainerColor
         )
     ) {
         Column(
@@ -122,12 +126,6 @@ fun ProductCard(
                     .focusRequester(dummyFocusRequester)
                     .focusable()
             )
-
-//            val isFilled = item.name.isNotBlank() ||
-//                    item.priceInput.isNotBlank() ||
-//                    item.quantityInput.isNotBlank() ||
-//                    item.customDiscountPercentInput.isNotBlank() ||
-//                    item.discountType != DiscountType.NONE
 
             ProductHeader(
                 id = item.id,
@@ -154,6 +152,7 @@ fun ProductCard(
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Поле цены
                 Box(
                     modifier = Modifier
                         .weight(1.1f)
@@ -214,6 +213,7 @@ fun ProductCard(
                     }
                 }
 
+                // Вертикальный разделитель
                 Box(
                     modifier = Modifier
                         .width(1.dp)
@@ -221,6 +221,7 @@ fun ProductCard(
                         .background(MaterialTheme.colorScheme.outlineVariant)
                 )
 
+                // Поле количества + выбор единицы
                 Row(
                     modifier = Modifier
                         .weight(1.3f)
