@@ -114,6 +114,7 @@ fun EditProductScreen(
                 parsed.unit?.let { viewModel.onUnitChanged(productId, it) }
                 parsed.discountType?.let { viewModel.onDiscountTypeChanged(productId, it) }
                 parsed.discountPercent?.let { viewModel.onCustomDiscountChanged(productId, it) }
+                viewModel.advanceFocusIfCompleted(productId)
             },
             onDismiss = { isVoiceDialogOpen = false }
         )
@@ -127,6 +128,7 @@ fun EditProductScreen(
                     parsed.price?.let { viewModel.onPriceChanged(productId, it) }
                     parsed.quantity?.let { viewModel.onQuantityChanged(productId, it) }
                     parsed.unit?.let { viewModel.onUnitChanged(productId, it) }
+                    viewModel.advanceFocusIfCompleted(productId)
                 },
                 onClose = { viewModel.stopScanning() }
             )

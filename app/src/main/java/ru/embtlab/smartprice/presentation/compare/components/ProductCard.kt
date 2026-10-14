@@ -100,6 +100,8 @@ fun ProductCard(
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
         KeyboardHelper.forceClose(currentView)
+        // Проверяем, заполнена ли карточка, чтобы сдвинуть фокус на следующую пустую
+        listener.onEditingFinished(item.id)
     }
 
     Card(

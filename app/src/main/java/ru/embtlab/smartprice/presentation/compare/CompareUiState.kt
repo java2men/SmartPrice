@@ -18,7 +18,7 @@ data class CompareUiState(
     val saveDialogTitleInput: String = "",
     val scanningProductId: String? = null,
     val isVoiceRecordingActive: Boolean = false,
-    val voiceTargetCardId: String? = null
+    val focusedCardId: String? = null // Активная цель для ввода (фокус карточки)
 ) {
     val canAddMore: Boolean
         get() = items.size < ComparisonConfig.MAX_PRODUCTS_LIMIT

@@ -101,13 +101,16 @@ fun CompareScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-
     val focusManager = LocalFocusManager.current
     val isKeyboardOpen = WindowInsets.isImeVisible
 
-    var focusedCardId by remember { mutableStateOf<String?>(null) }
+    val focusedCardId = uiState.focusedCardId
     var focusTrigger by remember { mutableLongStateOf(0L) }
     var wasKeyboardOpen by remember { mutableStateOf(false) }
+
+    LaunchedEffect(focusedCardId) {
+        focusTrigger = System.currentTimeMillis()
+    }
 
     LaunchedEffect(isKeyboardOpen) {
         if (isKeyboardOpen) {
@@ -124,7 +127,7 @@ fun CompareScreen(
         if (rawIndex == -1) null else (if (uiState.hasIncompatibleUnits) rawIndex + 1 else rawIndex)
     }
 
-    // OCR-сканер
+    // Режим OCR-сканера ценников
     if (uiState.scanningProductId != null) {
         if (cameraPermissionState.status.isGranted) {
             CameraOcrScanner(
@@ -133,6 +136,7 @@ fun CompareScreen(
                     parsed.price?.let { viewModel.onPriceChanged(id, it) }
                     parsed.quantity?.let { viewModel.onQuantityChanged(id, it) }
                     parsed.unit?.let { viewModel.onUnitChanged(id, it) }
+                    viewModel.advanceFocusIfCompleted(id)
                 },
                 onClose = { viewModel.stopScanning() }
             )
@@ -173,46 +177,42 @@ fun CompareScreen(
             override fun onNameChange(id: String, name: String) = viewModel.onNameChanged(id, name)
             override fun onPriceChange(id: String, price: String) =
                 viewModel.onPriceChanged(id, price)
-
             override fun onQuantityChange(id: String, quantity: String) =
                 viewModel.onQuantityChanged(id, quantity)
-
             override fun onUnitChange(id: String, unit: ProductUnit) =
                 viewModel.onUnitChanged(id, unit)
-
             override fun onDiscountTypeChange(id: String, type: DiscountType) =
                 viewModel.onDiscountTypeChanged(id, type)
-
             override fun onCustomDiscountChange(id: String, percent: String) =
                 viewModel.onCustomDiscountChanged(id, percent)
-
             override fun onScanClick(id: String) = viewModel.startScanning(id)
             override fun onDelete(id: String) = viewModel.onTrashClick(id)
             override fun onCardFocused(id: String) {
-                focusedCardId = id
-                focusTrigger = System.currentTimeMillis()
+                viewModel.onCardFocused(id)
+            }
+            override fun onEditingFinished(id: String) {
+                viewModel.advanceFocusIfCompleted(id)
             }
         }
     }
 
-    // 3. Динамический заголовок карточки в контексте цели
     val targetCardTitle = remember(focusedCardId, uiState.items) {
         if (!focusedCardId.isNullOrBlank()) {
             val item = uiState.items.find { it.id == focusedCardId }
-            item?.name.orEmpty().ifBlank { "Выбранный товар" }
+            item?.name.orEmpty().ifBlank { "Товар" }
         } else {
-            "Новый товар"
+            "Товар"
         }
     }
 
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
-            // 4. Сброс по тапу в пустоту (на свободное место экрана)
+            // Тап по свободной области экрана сбрасывает фокус с клавиатуры и карточек
             .pointerInput(Unit) {
                 detectTapGestures(onTap = {
                     focusManager.clearFocus()
-                    focusedCardId = null
+                    viewModel.onCardFocused(null)
                 })
             },
         snackbarHost = {
@@ -230,7 +230,7 @@ fun CompareScreen(
                         IconButton(onClick = { viewModel.openSaveDialog() }) {
                             Icon(
                                 imageVector = AppIcons.Default.BookmarkAdd,
-                                contentDescription = "Сохранить"
+                                contentDescription = "Сохранить результат"
                             )
                         }
                     }
@@ -244,7 +244,7 @@ fun CompareScreen(
                                 snackbarHostState.currentSnackbarData?.dismiss()
                                 val result = snackbarHostState.showSnackbar(
                                     message = "Список очищен",
-                                    actionLabel = "Отмена",
+                                    actionLabel = "Отменить",
                                     duration = SnackbarDuration.Short
                                 )
                                 if (result == SnackbarResult.ActionPerformed) {
@@ -254,7 +254,7 @@ fun CompareScreen(
                         }) {
                             Icon(
                                 imageVector = AppIcons.Default.Refresh,
-                                contentDescription = "Очистить"
+                                contentDescription = "Сбросить"
                             )
                         }
                     }
@@ -264,7 +264,6 @@ fun CompareScreen(
                 }
             )
         },
-
         floatingActionButton = {
             AnimatedVisibility(
                 visible = !isKeyboardOpen,
@@ -275,8 +274,7 @@ fun CompareScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Микрофон отображается снизу ТОЛЬКО в режимах CLASSIC и SMART_SINGLE_FIELD.
-                    // В режиме FULL_SCREEN_EDITOR (компактный список) он скрыт снизу, т.к. перенесён в EditProductScreen.
+                    // Кнопка микрофона доступна в режимах CLASSIC и SMART_SINGLE_FIELD
                     if (uiState.cardStyle != CardStylePreset.FULL_SCREEN_EDITOR) {
                         VoiceHoldToTalkButton(
                             targetCardTitle = targetCardTitle,
@@ -288,7 +286,7 @@ fun CompareScreen(
                         )
                     }
 
-                    // Кнопка добавления новой карточки [+]
+                    // Кнопка добавления товара [+]
                     BadgedBox(
                         badge = {
                             Badge(
@@ -355,7 +353,6 @@ fun CompareScreen(
                 }
             }
         }
-
     ) { innerPadding ->
         AutoScrollCompareList(
             state = listState,
@@ -375,7 +372,7 @@ fun CompareScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "Разные типы мер. Сравнение невозможно.",
+                            text = "Разные категории единиц измерения. Сравнение невозможно.",
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(12.dp)
@@ -409,7 +406,6 @@ fun CompareScreen(
                             isFilledExplicit = isItemFilled
                         )
                     }
-
                     CardStylePreset.SMART_SINGLE_FIELD -> {
                         SmartSingleFieldCard(
                             item = item,
@@ -422,7 +418,6 @@ fun CompareScreen(
                             isFilledExplicit = isItemFilled
                         )
                     }
-
                     CardStylePreset.FULL_SCREEN_EDITOR -> {
                         CompactProductSummaryCard(
                             item = item,
@@ -435,7 +430,6 @@ fun CompareScreen(
                     }
                 }
             }
-
         }
 
         if (uiState.isSaveDialogOpen) {

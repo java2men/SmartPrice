@@ -1,4 +1,3 @@
-// presentation/compare/components/ProductCardListener.kt
 package ru.embtlab.smartprice.presentation.compare.components
 
 import androidx.compose.runtime.Immutable
@@ -16,4 +15,5 @@ interface ProductCardListener {
     fun onScanClick(id: String)
     fun onDelete(id: String)
     fun onCardFocused(id: String)
+    fun onEditingFinished(id: String) {} // Вызывается при нажатии Done на клавиатуре
 }

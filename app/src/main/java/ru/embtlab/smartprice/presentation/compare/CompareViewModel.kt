@@ -51,12 +51,19 @@ class CompareViewModel @Inject constructor(
     private var nextProductNumber = ProductConstants.INITIAL_NEXT_PRODUCT_INDEX
 
     init {
+        // При старте приложения выставляем фокус на первую карточку
+        _uiState.update { it.copy(focusedCardId = it.items.firstOrNull()?.id) }
+
         viewModelScope.launch {
             settingsDataStore.settingsFlow.collect { settings ->
                 _uiState.update { it.copy(cardStyle = settings.cardPreset) }
             }
         }
     }
+
+    // ==========================================
+    // УПРАВЛЕНИЕ ПОЛЯМИ КАРТОЧЕК
+    // ==========================================
 
     fun onPriceChanged(productId: String, newPrice: String) {
         updateProduct(productId) { it.copy(priceInput = newPrice) }
@@ -93,6 +100,54 @@ class CompareViewModel @Inject constructor(
         }
     }
 
+    // ==========================================
+    // ЛОГИКА ФОКУСА
+    // ==========================================
+
+    fun onCardFocused(productId: String?) {
+        _uiState.update { it.copy(focusedCardId = productId) }
+    }
+
+    /**
+     * Проверяет, заполнена ли карточка (и цена, и вес/объём).
+     * Если заполнена — ищет следующую незаполненную карточку и переносит фокус на неё.
+     * Если все карточки заполнены — снимает фокус в null.
+     */
+    fun advanceFocusIfCompleted(currentProductId: String) {
+        val currentItems = _uiState.value.items
+        val currentItem = currentItems.find { it.id == currentProductId } ?: return
+
+        val isCardCompleted = currentItem.priceInput.isNotBlank() && currentItem.quantityInput.isNotBlank()
+        if (isCardCompleted) {
+            val nextEmptyId = findNextIncompleteCardId(currentItems, excludeId = currentProductId)
+            _uiState.update { it.copy(focusedCardId = nextEmptyId) }
+        }
+    }
+
+    private fun findNextIncompleteCardId(items: List<ProductItem>, excludeId: String?): String? {
+        val currentIndex = items.indexOfFirst { it.id == excludeId }
+        if (currentIndex != -1) {
+            // 1. Ищем ниже по списку
+            for (i in (currentIndex + 1) until items.size) {
+                if (isIncomplete(items[i])) return items[i].id
+            }
+            // 2. Ищем выше по списку
+            for (i in 0 until currentIndex) {
+                if (isIncomplete(items[i])) return items[i].id
+            }
+            return null
+        }
+        return items.firstOrNull { isIncomplete(it) }?.id
+    }
+
+    private fun isIncomplete(item: ProductItem): Boolean {
+        return item.priceInput.isBlank() || item.quantityInput.isBlank()
+    }
+
+    // ==========================================
+    // ДОБАВЛЕНИЕ / УДАЛЕНИЕ / ОЧИСТКА
+    // ==========================================
+
     fun addProduct() {
         if (_uiState.value.items.size >= ComparisonConfig.MAX_PRODUCTS_LIMIT) return
         val nextIndex = nextProductNumber++
@@ -100,7 +155,12 @@ class CompareViewModel @Inject constructor(
         _uiState.update { state ->
             val updatedList = state.items + newItem
             val (results, hasConflict) = calculateComparisonUseCase(updatedList)
-            state.copy(items = updatedList, results = results, hasIncompatibleUnits = hasConflict)
+            state.copy(
+                items = updatedList,
+                results = results,
+                hasIncompatibleUnits = hasConflict,
+                focusedCardId = newItem.id // Фокус сразу на добавленной карточке
+            )
         }
     }
 
@@ -109,17 +169,93 @@ class CompareViewModel @Inject constructor(
         _uiState.update { state ->
             val updatedList = state.items.filterNot { it.id == productId }
             val (results, hasConflict) = calculateComparisonUseCase(updatedList)
-            state.copy(items = updatedList, results = results, hasIncompatibleUnits = hasConflict)
+            val newFocusedId = if (state.focusedCardId == productId) {
+                findNextIncompleteCardId(updatedList, null)
+            } else {
+                state.focusedCardId
+            }
+            state.copy(
+                items = updatedList,
+                results = results,
+                hasIncompatibleUnits = hasConflict,
+                focusedCardId = newFocusedId
+            )
         }
+    }
+
+    fun onTrashClick(productId: String) {
+        val index = _uiState.value.items.indexOfFirst { it.id == productId }
+        if (index == -1) return
+        val item = _uiState.value.items[index]
+        val defaultName = "Товар ${index + 1}"
+        val isModified = isItemModified(item, index)
+
+        if (isModified) {
+            // Если карточка была изменена — очищаем данные и возвращаем дефолтное имя по индексу
+            updateProduct(productId) {
+                it.copy(
+                    name = defaultName,
+                    priceInput = "",
+                    quantityInput = "",
+                    customDiscountPercentInput = "",
+                    discountType = DiscountType.NONE
+                )
+            }
+            // Возвращаем фокус на очищенную карточку
+            _uiState.update { it.copy(focusedCardId = productId) }
+        } else {
+            // Если карточка уже пустая и имя дефолтное — удаляем саму карточку (если их больше двух)
+            if (_uiState.value.items.size > ProductConstants.MIN_PRODUCTS_COUNT) {
+                removeProduct(productId)
+            }
+        }
+    }
+
+    private fun isItemModified(item: ProductItem, index: Int): Boolean {
+        val defaultName = "Товар ${index + 1}"
+        val isNameChanged = item.name.isNotBlank() && !item.name.equals(defaultName, ignoreCase = true)
+        val hasPriceOrQuantity = item.priceInput.isNotBlank() || item.quantityInput.isNotBlank()
+        val hasDiscount = item.customDiscountPercentInput.isNotBlank() || item.discountType != DiscountType.NONE
+        return isNameChanged || hasPriceOrQuantity || hasDiscount
     }
 
     fun reset() {
         _uiState.value = CompareUiState(cardStyle = _uiState.value.cardStyle)
     }
 
-    fun setHistorySheetVisible(isOpen: Boolean) {
-        _uiState.update { it.copy(isHistorySheetOpen = isOpen) }
+    fun resetWithBackup() {
+        lastBackupState = _uiState.value.items
+        nextProductNumber = ProductConstants.INITIAL_NEXT_PRODUCT_INDEX
+        val initialItems = listOf(
+            ProductItem(name = "Товар 1"),
+            ProductItem(name = "Товар 2")
+        )
+        _uiState.update { state ->
+            CompareUiState(
+                cardStyle = state.cardStyle,
+                items = initialItems,
+                focusedCardId = initialItems.first().id
+            )
+        }
     }
+
+    fun undoReset() {
+        val backup = lastBackupState ?: return
+        val (results, hasConflict) = calculateComparisonUseCase(backup)
+        _uiState.update { state ->
+            state.copy(
+                items = backup,
+                results = results,
+                hasIncompatibleUnits = hasConflict,
+                focusedCardId = findNextIncompleteCardId(backup, null)
+            )
+        }
+        lastBackupState = null
+    }
+
+    // ==========================================
+    // OCR-СКАНЕР
+    // ==========================================
 
     fun startScanning(productId: String) {
         _uiState.update { it.copy(scanningProductId = productId) }
@@ -130,7 +266,7 @@ class CompareViewModel @Inject constructor(
     }
 
     // ==========================================
-    // ЛОГИКА PUSH-TO-TALK (ВАРИАНТ 1)
+    // ГОЛОСОВОЙ ВВОД (ГЛАВНЫЙ ЭКРАН)
     // ==========================================
 
     fun startPushToTalk(focusedCardId: String?) {
@@ -138,17 +274,14 @@ class CompareViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 isVoiceRecordingActive = true,
-                voiceTargetCardId = targetId
+                focusedCardId = targetId
             )
         }
     }
 
     fun cancelPushToTalk() {
         _uiState.update {
-            it.copy(
-                isVoiceRecordingActive = false,
-                voiceTargetCardId = null
-            )
+            it.copy(isVoiceRecordingActive = false)
         }
     }
 
@@ -159,9 +292,9 @@ class CompareViewModel @Inject constructor(
         }
 
         val parsed = parseVoiceInputUseCase(rawText)
-        var targetId = _uiState.value.voiceTargetCardId
+        var targetId = _uiState.value.focusedCardId
 
-        // Приоритет 4: семантический поиск существующей карточки по названию
+        // Если в голосе названо конкретное имя существующего товара — сопоставляем по имени
         if (!parsed.name.isNullOrBlank()) {
             val matchedItem = _uiState.value.items.find { item ->
                 FuzzyMatcher.similarity(item.name, parsed.name) >= 0.72
@@ -171,7 +304,7 @@ class CompareViewModel @Inject constructor(
             }
         }
 
-        // Приоритет 3: если свободных карточек не было — создаем новую
+        // Если подходящей цели не было — создаём новую карточку
         if (targetId == null) {
             if (_uiState.value.items.size < ComparisonConfig.MAX_PRODUCTS_LIMIT) {
                 val nextIndex = nextProductNumber++
@@ -194,31 +327,33 @@ class CompareViewModel @Inject constructor(
             parsed.unit?.let { onUnitChanged(id, it) }
             parsed.discountType?.let { onDiscountTypeChanged(id, it) }
             parsed.discountPercent?.let { onCustomDiscountChanged(id, it) }
+
+            // Проверяем заполненность и сдвигаем фокус на следующую пустую карточку
+            advanceFocusIfCompleted(id)
         }
 
         _uiState.update {
-            it.copy(
-                isVoiceRecordingActive = false,
-                voiceTargetCardId = null
-            )
+            it.copy(isVoiceRecordingActive = false)
         }
     }
 
     private fun resolveTargetCardId(focusedCardId: String?): String? {
         val items = _uiState.value.items
-
-        // 1. Если есть активный фокус — пишем строго в выбранную карточку
         if (!focusedCardId.isNullOrBlank() && items.any { it.id == focusedCardId }) {
             return focusedCardId
         }
-
-        // 2. Если фокуса нет — возвращаем null, чтобы создать новую карточку
         if (items.size < ComparisonConfig.MAX_PRODUCTS_LIMIT) {
-            return null // Сигнал для onVoicePhraseCompleted создать новый товар
+            return null
         }
-
-        // Страховка при достижении лимита товаров (пишем в последний)
         return items.lastOrNull()?.id
+    }
+
+    // ==========================================
+    // ИСТОРИЯ И ДИАЛОГИ
+    // ==========================================
+
+    fun setHistorySheetVisible(isOpen: Boolean) {
+        _uiState.update { it.copy(isHistorySheetOpen = isOpen) }
     }
 
     fun openSaveDialog() {
@@ -251,7 +386,8 @@ class CompareViewModel @Inject constructor(
                 items = record.items,
                 results = results,
                 hasIncompatibleUnits = hasConflict,
-                isHistorySheetOpen = false
+                isHistorySheetOpen = false,
+                focusedCardId = findNextIncompleteCardId(record.items, null)
             )
         }
     }
@@ -261,9 +397,9 @@ class CompareViewModel @Inject constructor(
         val secondBest = _uiState.value.results.filterNot { it.isBestChoice }.minByOrNull { it.unitPrice }
         val baseUnit = best.product.unit.category.baseLabel
         val savings = if (secondBest != null && secondBest.percentMoreExpensive > 0) {
-            String.format(Locale.US, "Выгоднее на %.1f%%", secondBest.percentMoreExpensive)
+            String.format(Locale.US, "Выгода %.1f%%", secondBest.percentMoreExpensive)
         } else {
-            "Выгодная покупка"
+            ""
         }
         val defaultTitle = "Сравнение " + SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date())
         val finalTitle = if (!customTitle.isNullOrBlank()) customTitle else defaultTitle
@@ -293,67 +429,5 @@ class CompareViewModel @Inject constructor(
             val (results, hasConflict) = calculateComparisonUseCase(updatedList)
             state.copy(items = updatedList, results = results, hasIncompatibleUnits = hasConflict)
         }
-    }
-
-    fun onTrashClick(productId: String) {
-        val index = _uiState.value.items.indexOfFirst { it.id == productId }
-        if (index == -1) return
-        val item = _uiState.value.items[index]
-        val defaultName = "Товар ${index + 1}"
-
-        val isModified = isItemModified(item, index)
-
-        if (isModified) {
-            // Если карточка была изменена — очищаем поля и возвращаем дефолтное имя с правильным индексом
-            updateProduct(productId) {
-                it.copy(
-                    name = defaultName,
-                    priceInput = "",
-                    quantityInput = "",
-                    customDiscountPercentInput = "",
-                    discountType = DiscountType.NONE
-                )
-            }
-        } else {
-            // Если карточка уже пустая со стандартным именем — удаляем саму карточку (если их больше двух)
-            if (_uiState.value.items.size > ProductConstants.MIN_PRODUCTS_COUNT) {
-                removeProduct(productId)
-            }
-        }
-    }
-
-    private fun isItemModified(item: ProductItem, index: Int): Boolean {
-        val defaultName = "Товар ${index + 1}"
-        val isNameChanged = item.name.isNotBlank() && !item.name.equals(defaultName, ignoreCase = true)
-        val hasPriceOrQuantity = item.priceInput.isNotBlank() || item.quantityInput.isNotBlank()
-        val hasDiscount = item.customDiscountPercentInput.isNotBlank() || item.discountType != DiscountType.NONE
-        return isNameChanged || hasPriceOrQuantity || hasDiscount
-    }
-
-    fun resetWithBackup() {
-        lastBackupState = _uiState.value.items
-        nextProductNumber = ProductConstants.INITIAL_NEXT_PRODUCT_INDEX
-        _uiState.update { state ->
-            CompareUiState(
-                cardStyle = state.cardStyle,
-                items = listOf(
-                    ProductItem(name = "Товар 1"),
-                    ProductItem(name = "Товар 2")
-                )
-            )
-        }
-    }
-
-    fun undoReset() {
-        val backup = lastBackupState ?: return
-        val (results, hasConflict) = calculateComparisonUseCase(backup)
-        _uiState.update { state ->
-            state.copy(
-                items = backup,
-                results = results,
-                hasIncompatibleUnits = hasConflict
-            )
-        }
-        lastBackupState = null
     }
 }

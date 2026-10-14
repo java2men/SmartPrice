@@ -101,6 +101,7 @@ fun SmartSingleFieldCard(
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
         KeyboardHelper.forceClose(currentView)
+        listener.onEditingFinished(item.id)
     }
 
     var isFieldFocused by remember { mutableStateOf(false) }
