@@ -45,7 +45,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusProperties
@@ -66,6 +68,7 @@ import ru.embtlab.smartprice.presentation.compare.components.CameraOcrScanner
 import ru.embtlab.smartprice.presentation.compare.components.DiscountSelectorRow
 import ru.embtlab.smartprice.presentation.compare.components.ProductCardListener
 import ru.embtlab.smartprice.presentation.compare.components.UnitDropdownMenu
+import ru.embtlab.smartprice.presentation.compare.components.dialogs.VoiceRecognitionBottomSheet
 import ru.embtlab.smartprice.presentation.compare.util.InputFormatters
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
 import ru.embtlab.smartprice.presentation.theme.icons.ArrowBack
@@ -97,16 +100,13 @@ fun EditProductScreen(
 
     val allCatalogPresets = ProductConstants.CATALOG_PRODUCT_PRESETS
 
-    // Системный голосовой ввод внутри экрана редактирования
-    val speechLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val spokenText = result.data
-                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                ?.firstOrNull()
+    var isVoiceDialogOpen by remember { mutableStateOf(false) }
 
-            if (!spokenText.isNullOrBlank()) {
+    // Если открыт голосовой диалог — рендерим встроенную шторку
+    if (isVoiceDialogOpen) {
+        VoiceRecognitionBottomSheet(
+            targetTitle = item.name.ifBlank { "Товар" },
+            onResult = { spokenText ->
                 val parsed = parseVoiceInputUseCase(spokenText)
                 parsed.name?.let { viewModel.onNameChanged(productId, it) }
                 parsed.price?.let { viewModel.onPriceChanged(productId, it) }
@@ -114,8 +114,9 @@ fun EditProductScreen(
                 parsed.unit?.let { viewModel.onUnitChanged(productId, it) }
                 parsed.discountType?.let { viewModel.onDiscountTypeChanged(productId, it) }
                 parsed.discountPercent?.let { viewModel.onCustomDiscountChanged(productId, it) }
-            }
-        }
+            },
+            onDismiss = { isVoiceDialogOpen = false }
+        )
     }
 
     // Режим OCR-сканера
@@ -176,26 +177,8 @@ fun EditProductScreen(
                         onClick = {
                             if (!audioPermissionState.status.isGranted) {
                                 audioPermissionState.launchPermissionRequest()
-                                return@IconButton
-                            }
-
-                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                putExtra(
-                                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-                                )
-                                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
-                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ru-RU")
-                                putExtra(
-                                    RecognizerIntent.EXTRA_PROMPT,
-                                    "Заполняем: ${item.name.ifBlank { "Товар" }}\n(Например: молоко 1 литр 50 рублей)"
-                                )
-                            }
-
-                            try {
-                                speechLauncher.launch(intent)
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "Голосовой ввод недоступен", Toast.LENGTH_SHORT).show()
+                            } else {
+                                isVoiceDialogOpen = true
                             }
                         }
                     ) {
