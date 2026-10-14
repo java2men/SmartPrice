@@ -18,10 +18,10 @@ class SettingsViewModel @Inject constructor(
     private val dataStore: SettingsDataStore
 ) : ViewModel() {
 
-    val settings: StateFlow<AppSettings> = dataStore.settingsFlow.stateIn(
+    val settings: StateFlow<AppSettings?> = dataStore.settingsFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = AppSettings()
+        initialValue = null // null сигнализирует о том, что настройки ещё читаются с диска
     )
 
     fun onPresetChanged(preset: CardStylePreset) {
