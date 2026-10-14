@@ -50,14 +50,13 @@ fun EditNameBottomSheet(
     currentName: String,
     recentNames: List<String> = emptyList(),
     onConfirm: (String) -> Unit,
-    onDeleteRecent: (String) -> Unit = {}, // <-- Колбэк удаления из истории
+    onDeleteRecent: (String) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     var tempName by remember { mutableStateOf(currentName) }
     val focusManager = LocalFocusManager.current
     val verticalScrollState = rememberScrollState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
     val allCatalogPresets = ProductConstants.CATALOG_PRODUCT_PRESETS
 
     ModalBottomSheet(
@@ -124,11 +123,11 @@ fun EditNameBottomSheet(
                     .padding(horizontal = 20.dp)
             )
 
-            // РАЗДЕЛ 1: Личная история (с возможностью удаления)
+            // Блок 1: Часто выбираемые
             if (recentNames.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "ВЫ ЧАСТО ВЫБИРАЕТЕ",
+                    text = "Вы часто выбираете",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary,
@@ -147,8 +146,8 @@ fun EditNameBottomSheet(
                         FilterChip(
                             selected = isSelected,
                             onClick = {
+                                // Только подставляем имя в поле ввода без авто-закрытия
                                 tempName = recentItem
-                                onConfirm(recentItem)
                             },
                             label = { Text("⚡ $recentItem") },
                             trailingIcon = {
@@ -158,7 +157,7 @@ fun EditNameBottomSheet(
                                 ) {
                                     Icon(
                                         imageVector = AppIcons.Default.Close,
-                                        contentDescription = "Удалить из недавних",
+                                        contentDescription = "Удалить",
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                         modifier = Modifier.size(12.dp)
                                     )
@@ -175,10 +174,10 @@ fun EditNameBottomSheet(
                 }
             }
 
-            // РАЗДЕЛ 2: Каталог товаров
+            // Блок 2: Каталог товаров
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "КАТАЛОГ ТОВАРОВ",
+                text = "Каталог товаров",
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -197,8 +196,8 @@ fun EditNameBottomSheet(
                     FilterChip(
                         selected = isSelected,
                         onClick = {
+                            // Только подставляем название из каталога без авто-закрытия
                             tempName = preset
-                            onConfirm(preset)
                         },
                         label = { Text(preset) },
                         shape = RoundedCornerShape(10.dp),
@@ -222,13 +221,12 @@ fun EditNameBottomSheet(
                 ) {
                     Text("Сбросить")
                 }
-
                 Button(
                     onClick = { onConfirm(tempName.trim()) },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Готово")
+                    Text("Применить")
                 }
             }
         }
