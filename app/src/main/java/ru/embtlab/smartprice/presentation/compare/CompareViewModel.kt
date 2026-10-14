@@ -51,12 +51,16 @@ class CompareViewModel @Inject constructor(
     private var nextProductNumber = ProductConstants.INITIAL_NEXT_PRODUCT_INDEX
 
     init {
-        // При старте приложения выставляем фокус на первую карточку
         _uiState.update { it.copy(focusedCardId = it.items.firstOrNull()?.id) }
 
         viewModelScope.launch {
             settingsDataStore.settingsFlow.collect { settings ->
-                _uiState.update { it.copy(cardStyle = settings.cardPreset) }
+                _uiState.update {
+                    it.copy(
+                        cardStyle = settings.cardPreset,
+                        isSettingsLoaded = true // Настройки прочитаны
+                    )
+                }
             }
         }
     }

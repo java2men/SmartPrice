@@ -13,12 +13,13 @@ data class CompareUiState(
     val results: List<CalculatedItem> = emptyList(),
     val hasIncompatibleUnits: Boolean = false,
     val cardStyle: CardStylePreset = CardStylePreset.CLASSIC,
+    val isSettingsLoaded: Boolean = false, // <-- Флаг готовности настроек
     val isHistorySheetOpen: Boolean = false,
     val isSaveDialogOpen: Boolean = false,
     val saveDialogTitleInput: String = "",
     val scanningProductId: String? = null,
     val isVoiceRecordingActive: Boolean = false,
-    val focusedCardId: String? = null // Активная цель для ввода (фокус карточки)
+    val focusedCardId: String? = null
 ) {
     val canAddMore: Boolean
         get() = items.size < ComparisonConfig.MAX_PRODUCTS_LIMIT

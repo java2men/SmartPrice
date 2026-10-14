@@ -12,6 +12,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -354,6 +355,17 @@ fun CompareScreen(
             }
         }
     ) { innerPadding ->
+
+        // Если настройки еще не вычитаны из DataStore — ждем первый кадр, не рендеря неверный стиль
+        if (!uiState.isSettingsLoaded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            )
+            return@Scaffold
+        }
+
         AutoScrollCompareList(
             state = listState,
             focusedIndex = focusedIndex,
