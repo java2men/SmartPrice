@@ -18,7 +18,7 @@ class ParsePriceTagUseCase {
     private val literTokens = listOf("л", "л.", "литр", "l")
     private val pieceTokens = listOf("шт", "шт.", "штука", "уп", "пак", "порц", "pcs")
 
-    // Поиск цен с явными разделителями (■, •, -, точка, запятая)
+    // Поиск цен с копейками через точку, запятую или спецсимволы
     private val inlinePriceRegex = Regex("""(\d{1,5})\s*[\.,■▪•·\-–—]\s*(\d{2})""")
 
     fun parseFromVisionText(
@@ -29,15 +29,15 @@ class ParsePriceTagUseCase {
         val allLines = visionText.textBlocks.flatMap { it.lines }
         val rawFullText = visionText.text
 
-        // 1. Нормализация OCR-опечаток перед поиском веса/количества (латинские r/g после цифр считаем граммами)
+        // 1. Нормализация частых опечаток OCR латиницы r/g на кириллицу после цифр
         val normalizedFullText = rawFullText
             .replace(Regex("""(?<=\d)\s*[rR]\b"""), "г")
             .replace(Regex("""(?<=\d)\s*[gG]\b"""), "г")
 
-        // 2. Извлечение количества и единиц измерения
+        // 2. Извлекаем вес / объем
         val (detectedQuantity, detectedUnit) = extractQuantityWithFuzzy(allLines, normalizedFullText)
 
-        // 3. Центростремительный скоринг: отбираем строки ближе к центру видоискателя
+        // 3. Вычисляем кандидатов на цену с весом близости к центру кадра
         val centerX = frameWidth / 2f
         val centerY = frameHeight / 2f
         val maxDist = hypot(centerX, centerY).coerceAtLeast(1f)
@@ -65,14 +65,14 @@ class ParsePriceTagUseCase {
         for ((rubleLine, _) in scoredCandidateLines) {
             val rawLineText = rubleLine.text.trim()
 
-            // Вариант А: рубли и копейки уже разделены знаками
+            // Проверяем формат слитной цены (например, "149.90")
             val inlineMatch = inlinePriceRegex.find(rawLineText)
             if (inlineMatch != null) {
                 detectedPrice = "${inlineMatch.groupValues[1]}.${inlineMatch.groupValues[2]}"
                 break
             }
 
-            // Вариант Б: изолированное число рублей
+            // Проверяем отдельное целое число рублей
             val rubleNumber = extractLeadingNumber(rawLineText)
             if (rubleNumber != null && rubleNumber != detectedQuantity && rubleNumber.toIntOrNull() in 5..99999) {
                 detectedPrice = rubleNumber
@@ -93,7 +93,6 @@ class ParsePriceTagUseCase {
 
     private fun extractQuantityWithFuzzy(allLines: List<Text.Line>, fullText: String): Pair<String?, ProductUnit?> {
         for (line in allLines) {
-            // Подменяем латинские артефакты в строках
             val normalizedLine = line.text
                 .replace(Regex("""(?<=\d)\s*[rR]\b"""), "г")
                 .replace(Regex("""(?<=\d)\s*[gG]\b"""), "г")
@@ -120,7 +119,7 @@ class ParsePriceTagUseCase {
             }
         }
 
-        // Поиск по регулярным выражениям с поддержкой русских и латинских букв
+        // Регулярные выражения запасного поиска по всему тексту
         val gramRegex = Regex("""(\d{2,4})\s*[гg][рr]?(?:амм)?(?!\w)""", RegexOption.IGNORE_CASE).find(fullText)?.groupValues?.get(1)
         if (gramRegex != null) return gramRegex to ProductUnit.GRAM
 

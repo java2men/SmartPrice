@@ -10,18 +10,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import ru.embtlab.smartprice.data.local.datastore.SettingsDataStore
+import ru.embtlab.smartprice.domain.model.history.SavedComparison
 import ru.embtlab.smartprice.domain.model.product.ComparisonConfig
 import ru.embtlab.smartprice.domain.model.product.DiscountType
 import ru.embtlab.smartprice.domain.model.product.ProductConstants
 import ru.embtlab.smartprice.domain.model.product.ProductItem
 import ru.embtlab.smartprice.domain.model.product.ProductUnit
-import ru.embtlab.smartprice.domain.model.history.SavedComparison
-import ru.embtlab.smartprice.domain.repository.ComparisonHistoryRepository
+import ru.embtlab.smartprice.domain.repository.SettingsRepository
 import ru.embtlab.smartprice.domain.usecase.comparison.CalculateComparisonUseCase
+import ru.embtlab.smartprice.domain.usecase.comparison.DeleteComparisonUseCase
 import ru.embtlab.smartprice.domain.usecase.comparison.GetHistoryUseCase
-import ru.embtlab.smartprice.domain.usecase.voice.ParseVoiceInputUseCase
 import ru.embtlab.smartprice.domain.usecase.comparison.SaveComparisonUseCase
+import ru.embtlab.smartprice.domain.usecase.voice.ParseVoiceInputUseCase
 import ru.embtlab.smartprice.domain.util.FuzzyMatcher
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -33,9 +33,9 @@ class CompareViewModel @Inject constructor(
     private val calculateComparisonUseCase: CalculateComparisonUseCase,
     private val getHistoryUseCase: GetHistoryUseCase,
     private val saveComparisonUseCase: SaveComparisonUseCase,
+    private val deleteComparisonUseCase: DeleteComparisonUseCase,
     private val parseVoiceInputUseCase: ParseVoiceInputUseCase,
-    private val repository: ComparisonHistoryRepository,
-    private val settingsDataStore: SettingsDataStore
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CompareUiState())
@@ -44,7 +44,7 @@ class CompareViewModel @Inject constructor(
     val history: StateFlow<List<SavedComparison>> = getHistoryUseCase()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val recentProductNames: StateFlow<List<String>> = settingsDataStore.recentProductNamesFlow
+    val recentProductNames: StateFlow<List<String>> = settingsRepository.recentProductNamesFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private var lastBackupState: List<ProductItem>? = null
@@ -52,9 +52,8 @@ class CompareViewModel @Inject constructor(
 
     init {
         _uiState.update { it.copy(focusedCardId = it.items.firstOrNull()?.id) }
-
         viewModelScope.launch {
-            settingsDataStore.settingsFlow.collect { settings ->
+            settingsRepository.settingsFlow.collect { settings ->
                 _uiState.update {
                     it.copy(
                         cardStyle = settings.cardPreset,
@@ -95,34 +94,28 @@ class CompareViewModel @Inject constructor(
         updateProduct(productId) { it.copy(name = newName) }
         if (newName.isNotBlank()) {
             viewModelScope.launch {
-                settingsDataStore.addRecentProductName(newName)
+                settingsRepository.addRecentProductName(newName)
             }
         }
     }
 
     fun removeRecentName(name: String) {
         viewModelScope.launch {
-            settingsDataStore.removeRecentProductName(name)
+            settingsRepository.removeRecentProductName(name)
         }
     }
 
     // ==========================================
-    // ЛОГИКА ФОКУСА
+    // ФОКУСИРОВКА
     // ==========================================
 
     fun onCardFocused(productId: String?) {
         _uiState.update { it.copy(focusedCardId = productId) }
     }
 
-    /**
-     * Проверяет, заполнена ли карточка (и цена, и вес/объём).
-     * Если заполнена — ищет следующую незаполненную карточку и переносит фокус на неё.
-     * Если все карточки заполнены — снимает фокус в null.
-     */
     fun advanceFocusIfCompleted(currentProductId: String) {
         val currentItems = _uiState.value.items
         val currentItem = currentItems.find { it.id == currentProductId } ?: return
-
         val isCardCompleted = currentItem.priceInput.isNotBlank() && currentItem.quantityInput.isNotBlank()
         if (isCardCompleted) {
             val nextEmptyId = findNextIncompleteCardId(currentItems, excludeId = currentProductId)
@@ -133,11 +126,9 @@ class CompareViewModel @Inject constructor(
     private fun findNextIncompleteCardId(items: List<ProductItem>, excludeId: String?): String? {
         val currentIndex = items.indexOfFirst { it.id == excludeId }
         if (currentIndex != -1) {
-            // 1. Ищем ниже по списку
             for (i in (currentIndex + 1) until items.size) {
                 if (isIncomplete(items[i])) return items[i].id
             }
-            // 2. Ищем выше по списку
             for (i in 0 until currentIndex) {
                 if (isIncomplete(items[i])) return items[i].id
             }
@@ -151,7 +142,7 @@ class CompareViewModel @Inject constructor(
     }
 
     // ==========================================
-    // ДОБАВЛЕНИЕ / УДАЛЕНИЕ / ОЧИСТКА
+    // ОПЕРАЦИИ СО СПИСКОМ ТОВАРОВ
     // ==========================================
 
     fun addProduct() {
@@ -165,7 +156,7 @@ class CompareViewModel @Inject constructor(
                 items = updatedList,
                 results = results,
                 hasIncompatibleUnits = hasConflict,
-                focusedCardId = newItem.id // Фокус сразу на добавленной карточке
+                focusedCardId = newItem.id
             )
         }
     }
@@ -195,9 +186,7 @@ class CompareViewModel @Inject constructor(
         val item = _uiState.value.items[index]
         val defaultName = "Товар ${index + 1}"
         val isModified = isItemModified(item, index)
-
         if (isModified) {
-            // Если карточка была изменена — очищаем данные и возвращаем дефолтное имя по индексу
             updateProduct(productId) {
                 it.copy(
                     name = defaultName,
@@ -207,10 +196,8 @@ class CompareViewModel @Inject constructor(
                     discountType = DiscountType.NONE
                 )
             }
-            // Возвращаем фокус на очищенную карточку
             _uiState.update { it.copy(focusedCardId = productId) }
         } else {
-            // Если карточка уже пустая и имя дефолтное — удаляем саму карточку (если их больше двух)
             if (_uiState.value.items.size > ProductConstants.MIN_PRODUCTS_COUNT) {
                 removeProduct(productId)
             }
@@ -272,7 +259,7 @@ class CompareViewModel @Inject constructor(
     }
 
     // ==========================================
-    // ГОЛОСОВОЙ ВВОД (ГЛАВНЫЙ ЭКРАН)
+    // ГОЛОСОВОЙ ВВОД
     // ==========================================
 
     fun startPushToTalk(focusedCardId: String?) {
@@ -296,11 +283,9 @@ class CompareViewModel @Inject constructor(
             cancelPushToTalk()
             return
         }
-
         val parsed = parseVoiceInputUseCase(rawText)
         var targetId = _uiState.value.focusedCardId
 
-        // Если в голосе названо конкретное имя существующего товара — сопоставляем по имени
         if (!parsed.name.isNullOrBlank()) {
             val matchedItem = _uiState.value.items.find { item ->
                 FuzzyMatcher.similarity(item.name, parsed.name) >= 0.72
@@ -310,7 +295,6 @@ class CompareViewModel @Inject constructor(
             }
         }
 
-        // Если подходящей цели не было — создаём новую карточку
         if (targetId == null) {
             if (_uiState.value.items.size < ComparisonConfig.MAX_PRODUCTS_LIMIT) {
                 val nextIndex = nextProductNumber++
@@ -333,11 +317,8 @@ class CompareViewModel @Inject constructor(
             parsed.unit?.let { onUnitChanged(id, it) }
             parsed.discountType?.let { onDiscountTypeChanged(id, it) }
             parsed.discountPercent?.let { onCustomDiscountChanged(id, it) }
-
-            // Проверяем заполненность и сдвигаем фокус на следующую пустую карточку
             advanceFocusIfCompleted(id)
         }
-
         _uiState.update {
             it.copy(isVoiceRecordingActive = false)
         }
@@ -355,7 +336,7 @@ class CompareViewModel @Inject constructor(
     }
 
     // ==========================================
-    // ИСТОРИЯ И ДИАЛОГИ
+    // ИСТОРИЯ
     // ==========================================
 
     fun setHistorySheetVisible(isOpen: Boolean) {
@@ -403,7 +384,7 @@ class CompareViewModel @Inject constructor(
         val secondBest = _uiState.value.results.filterNot { it.isBestChoice }.minByOrNull { it.unitPrice }
         val baseUnit = best.product.unit.category.baseLabel
         val savings = if (secondBest != null && secondBest.percentMoreExpensive > 0) {
-            String.format(Locale.US, "Выгода %.1f%%", secondBest.percentMoreExpensive)
+            String.format(Locale.US, "Выгоднее на %.1f%%", secondBest.percentMoreExpensive)
         } else {
             ""
         }
@@ -423,7 +404,7 @@ class CompareViewModel @Inject constructor(
 
     fun deleteHistoryItem(id: Long) {
         viewModelScope.launch {
-            repository.deleteComparison(id)
+            deleteComparisonUseCase(id) // <-- Теперь через Use Case
         }
     }
 

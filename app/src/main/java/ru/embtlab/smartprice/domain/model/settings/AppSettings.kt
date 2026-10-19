@@ -1,8 +1,5 @@
 package ru.embtlab.smartprice.domain.model.settings
 
-import androidx.compose.runtime.Immutable
-
-@Immutable
 data class AppSettings(
     val cardPreset: CardStylePreset = CardStylePreset.CLASSIC,
     val themeMode: AppThemeMode = AppThemeMode.SYSTEM,

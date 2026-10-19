@@ -67,7 +67,7 @@ import kotlinx.coroutines.launch
 import ru.embtlab.smartprice.domain.model.settings.CardStylePreset
 import ru.embtlab.smartprice.domain.model.product.DiscountType
 import ru.embtlab.smartprice.domain.model.product.ProductUnit
-import ru.embtlab.smartprice.core.ui.components.AutoScrollCompareList
+import ru.embtlab.smartprice.core.ui.components.AutoScrollLazyColumn
 import ru.embtlab.smartprice.presentation.scanner.CameraOcrScanner
 import ru.embtlab.smartprice.presentation.compare.components.cards.CompactProductSummaryCard
 import ru.embtlab.smartprice.presentation.compare.components.cards.ProductCard
@@ -366,7 +366,7 @@ fun CompareScreen(
             return@Scaffold
         }
 
-        AutoScrollCompareList(
+        AutoScrollLazyColumn(
             state = listState,
             focusedIndex = focusedIndex,
             scrollTrigger = focusTrigger,

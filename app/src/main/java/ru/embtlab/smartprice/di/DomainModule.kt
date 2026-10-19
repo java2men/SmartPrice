@@ -6,6 +6,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import ru.embtlab.smartprice.domain.repository.ComparisonHistoryRepository
 import ru.embtlab.smartprice.domain.usecase.comparison.CalculateComparisonUseCase
+import ru.embtlab.smartprice.domain.usecase.comparison.DeleteComparisonUseCase
 import ru.embtlab.smartprice.domain.usecase.comparison.GetHistoryUseCase
 import ru.embtlab.smartprice.domain.usecase.comparison.SaveComparisonUseCase
 import ru.embtlab.smartprice.domain.usecase.ocr.ParsePriceTagUseCase
@@ -36,6 +37,14 @@ object DomainModule {
         repository: ComparisonHistoryRepository
     ): SaveComparisonUseCase {
         return SaveComparisonUseCase(repository)
+    }
+
+    @Provides
+    @Singleton
+    fun provideDeleteComparisonUseCase(
+        repository: ComparisonHistoryRepository
+    ): DeleteComparisonUseCase {
+        return DeleteComparisonUseCase(repository)
     }
 
     @Provides

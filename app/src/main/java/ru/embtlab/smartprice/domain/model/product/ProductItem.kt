@@ -1,9 +1,7 @@
 package ru.embtlab.smartprice.domain.model.product
 
-import androidx.compose.runtime.Immutable
 import java.util.UUID
 
-@Immutable
 data class ProductItem(
     val id: String = UUID.randomUUID().toString(),
     val name: String = "",
