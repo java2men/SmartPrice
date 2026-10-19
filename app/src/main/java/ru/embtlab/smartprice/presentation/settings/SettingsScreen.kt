@@ -33,8 +33,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import ru.embtlab.smartprice.domain.model.AppThemeMode
-import ru.embtlab.smartprice.presentation.compare.components.dialogs.SettingsPresetDialog
+import ru.embtlab.smartprice.domain.model.settings.AppThemeMode
+import ru.embtlab.smartprice.presentation.settings.dialogs.SettingsPresetDialog
 import ru.embtlab.smartprice.presentation.settings.components.SettingsItemRow
 import ru.embtlab.smartprice.presentation.settings.components.SettingsSection
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons

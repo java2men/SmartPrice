@@ -15,7 +15,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import ru.embtlab.smartprice.presentation.compare.CompareScreen
 import ru.embtlab.smartprice.presentation.compare.CompareViewModel
-import ru.embtlab.smartprice.presentation.compare.EditProductScreen
+import ru.embtlab.smartprice.presentation.edit.EditProductScreen
 import ru.embtlab.smartprice.presentation.settings.SettingsScreen
 
 @Composable

@@ -13,7 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
 import dagger.hilt.android.AndroidEntryPoint
-import ru.embtlab.smartprice.domain.model.AppThemeMode
+import ru.embtlab.smartprice.domain.model.settings.AppThemeMode
 import ru.embtlab.smartprice.presentation.main.MainViewModel
 import ru.embtlab.smartprice.presentation.navigation.AppNavGraph
 import ru.embtlab.smartprice.presentation.theme.SmartPriceTheme

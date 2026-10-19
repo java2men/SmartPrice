@@ -1,0 +1,13 @@
+package ru.embtlab.smartprice.domain.model.history
+
+import ru.embtlab.smartprice.domain.model.product.ProductItem
+
+data class SavedComparison(
+    val id: Long = 0,
+    val title: String,
+    val bestProductName: String,
+    val bestUnitPriceFormatted: String,
+    val savingsInfo: String,
+    val items: List<ProductItem> = emptyList(),
+    val timestamp: Long = System.currentTimeMillis()
+)

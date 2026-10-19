@@ -1,9 +1,9 @@
 package ru.embtlab.smartprice.presentation.compare
 
-import ru.embtlab.smartprice.domain.model.CalculatedItem
-import ru.embtlab.smartprice.domain.model.CardStylePreset
-import ru.embtlab.smartprice.domain.model.ComparisonConfig
-import ru.embtlab.smartprice.domain.model.ProductItem
+import ru.embtlab.smartprice.domain.model.product.CalculatedItem
+import ru.embtlab.smartprice.domain.model.settings.CardStylePreset
+import ru.embtlab.smartprice.domain.model.product.ComparisonConfig
+import ru.embtlab.smartprice.domain.model.product.ProductItem
 
 data class CompareUiState(
     val items: List<ProductItem> = listOf(

@@ -40,7 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
-import ru.embtlab.smartprice.domain.model.ProductConstants
+import ru.embtlab.smartprice.domain.model.product.ProductConstants
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
 import ru.embtlab.smartprice.presentation.theme.icons.Close
 

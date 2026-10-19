@@ -7,40 +7,40 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import ru.embtlab.smartprice.data.local.SettingsDataStore
-import ru.embtlab.smartprice.domain.model.AppSettings
-import ru.embtlab.smartprice.domain.model.AppThemeMode
-import ru.embtlab.smartprice.domain.model.CardStylePreset
+import ru.embtlab.smartprice.domain.model.settings.AppSettings
+import ru.embtlab.smartprice.domain.model.settings.AppThemeMode
+import ru.embtlab.smartprice.domain.model.settings.CardStylePreset
+import ru.embtlab.smartprice.domain.repository.SettingsRepository
 import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
-    private val dataStore: SettingsDataStore
+    private val repository: SettingsRepository
 ) : ViewModel() {
 
-    val settings: StateFlow<AppSettings?> = dataStore.settingsFlow.stateIn(
+    val settings: StateFlow<AppSettings?> = repository.settingsFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = null
     )
 
     fun onPresetChanged(preset: CardStylePreset) {
-        viewModelScope.launch { dataStore.setCardPreset(preset) }
+        viewModelScope.launch { repository.setCardPreset(preset) }
     }
 
     fun onThemeModeChanged(mode: AppThemeMode) {
-        viewModelScope.launch { dataStore.setThemeMode(mode) }
+        viewModelScope.launch { repository.setThemeMode(mode) }
     }
 
     fun onDynamicColorChanged(enabled: Boolean) {
-        viewModelScope.launch { dataStore.setDynamicColor(enabled) }
+        viewModelScope.launch { repository.setDynamicColor(enabled) }
     }
 
     fun onVoiceInputEnabledChanged(enabled: Boolean) {
-        viewModelScope.launch { dataStore.setVoiceInputEnabled(enabled) }
+        viewModelScope.launch { repository.setVoiceInputEnabled(enabled) }
     }
 
     fun onOcrScannerEnabledChanged(enabled: Boolean) {
-        viewModelScope.launch { dataStore.setOcrScannerEnabled(enabled) }
+        viewModelScope.launch { repository.setOcrScannerEnabled(enabled) }
     }
 }

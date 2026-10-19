@@ -12,7 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import ru.embtlab.smartprice.domain.model.SavedComparison
+import ru.embtlab.smartprice.domain.model.history.SavedComparison
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
 import ru.embtlab.smartprice.presentation.theme.icons.Delete
 
