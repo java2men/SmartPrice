@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="160dp"
+    android:height="160dp"
+    android:viewportWidth="160"
+    android:viewportHeight="160">
+
+    <!-- 1. Четыре уголка сканера Freeze-Frame (толщина 5dp, скругление) -->
+    <!-- Верхний левый угол -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M52,65 V50 H67" />
+
+    <!-- Верхний правый угол -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M93,50 H108 V65" />
+
+    <!-- Нижний левый угол -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M52,95 V110 H67" />
+
+    <!-- Нижний правый угол -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M93,110 H108 V95" />
+
+    <!-- 2. Символ выгоды (%) внутри видоискателя -->
+    <!-- Диагональный срез с наклоном 45 градусов -->
+    <path
+        android:strokeColor="#4ADE80"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:pathData="M97,63 L63,97" />
+
+    <!-- Верхняя золотая монета-процент -->
+    <path
+        android:fillColor="#FBBF24"
+        android:pathData="M68,68 m-7.5,0 a7.5,7.5 0 1,1 15,0 a7.5,7.5 0 1,1 -15,0" />
+
+    <!-- Вырез верхней монеты для контраста -->
+    <path
+        android:fillColor="#0D3B22"
+        android:pathData="M68,68 m-3,0 a3,3 0 1,1 6,0 a3,3 0 1,1 -6,0" />
+
+    <!-- Нижняя изумрудная монета-процент -->
+    <path
+        android:fillColor="#22C55E"
+        android:pathData="M92,92 m-7.5,0 a7.5,7.5 0 1,1 15,0 a7.5,7.5 0 1,1 -15,0" />
+
+    <!-- Вырез нижней монеты -->
+    <path
+        android:fillColor="#0D3B22"
+        android:pathData="M92,92 m-3,0 a3,3 0 1,1 6,0 a3,3 0 1,1 -6,0" />
+
+</vector>

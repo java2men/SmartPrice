@@ -2,4 +2,19 @@
 <resources>
 
     <style name="Theme.SmartPrice" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.SmartPrice.Splash" parent="Theme.SplashScreen">
+        <!-- Тёмно-изумрудный фон -->
+        <item name="windowSplashScreenBackground">#062414</item>
+
+        <!-- Векторная иконка -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
+
+        <!-- Время удержания (для Android 12+) -->
+        <item name="windowSplashScreenAnimationDuration">400</item>
+
+        <!-- Переключение на основную тему после сплэша -->
+        <item name="postSplashScreenTheme">@style/Theme.SmartPrice</item>
+    </style>
+
 </resources>

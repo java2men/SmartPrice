@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Уголки рамки сканера -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M31,43 V33 H43 M65,33 H77 V43 M31,65 V75 H43 M65,75 H77 V65" />
+
+    <!-- Диагональ процента -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4.5"
+        android:strokeLineCap="round"
+        android:pathData="M68,40 L40,68" />
+
+    <!-- Верхний кружок -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M44,44 m-5,0 a5,5 0 1,1 10,0 a5,5 0 1,1 -10,0" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M44,44 m-2,0 a2,2 0 1,1 4,0 a2,2 0 1,1 -4,0" />
+
+    <!-- Нижний кружок -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M64,64 m-5,0 a5,5 0 1,1 10,0 a5,5 0 1,1 -10,0" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M64,64 m-2,0 a2,2 0 1,1 4,0 a2,2 0 1,1 -4,0" />
+
+</vector>
