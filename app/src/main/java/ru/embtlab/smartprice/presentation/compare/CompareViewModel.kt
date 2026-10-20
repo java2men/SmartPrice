@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import ru.embtlab.smartprice.core.analytics.AnalyticsEvents
+import ru.embtlab.smartprice.core.analytics.AnalyticsManager
 import ru.embtlab.smartprice.domain.model.history.SavedComparison
 import ru.embtlab.smartprice.domain.model.product.ComparisonConfig
 import ru.embtlab.smartprice.domain.model.product.DiscountType
@@ -149,6 +151,12 @@ class CompareViewModel @Inject constructor(
         if (_uiState.value.items.size >= ComparisonConfig.MAX_PRODUCTS_LIMIT) return
         val nextIndex = nextProductNumber++
         val newItem = ProductItem(name = "Товар $nextIndex")
+
+        AnalyticsManager.trackEvent(
+            AnalyticsEvents.PRODUCT_ADDED,
+            mapOf(AnalyticsEvents.Params.ITEMS_COUNT to (_uiState.value.items.size + 1).toString())
+        )
+
         _uiState.update { state ->
             val updatedList = state.items + newItem
             val (results, hasConflict) = calculateComparisonUseCase(updatedList)
@@ -264,6 +272,7 @@ class CompareViewModel @Inject constructor(
 
     fun startPushToTalk(focusedCardId: String?) {
         val targetId = resolveTargetCardId(focusedCardId)
+        AnalyticsManager.trackEvent(AnalyticsEvents.VOICE_INPUT_STARTED)
         _uiState.update {
             it.copy(
                 isVoiceRecordingActive = true,
@@ -280,11 +289,28 @@ class CompareViewModel @Inject constructor(
 
     fun onVoicePhraseCompleted(rawText: String) {
         if (rawText.isBlank()) {
+
+            AnalyticsManager.trackEvent(
+                AnalyticsEvents.VOICE_INPUT_CANCELLED,
+                mapOf("reason" to "empty_speech")
+            )
+
             cancelPushToTalk()
             return
         }
         val parsed = parseVoiceInputUseCase(rawText)
         var targetId = _uiState.value.focusedCardId
+        val hasPrice = !parsed.price.isNullOrBlank()
+        val hasQuantity = !parsed.quantity.isNullOrBlank()
+
+        AnalyticsManager.trackEvent(
+            AnalyticsEvents.VOICE_INPUT_COMPLETED,
+            mapOf(
+                AnalyticsEvents.Params.SUCCESS to (hasPrice && hasQuantity).toString(),
+                AnalyticsEvents.Params.HAS_DISCOUNT to (parsed.discountType != null).toString(),
+                AnalyticsEvents.Params.HAS_CUSTOM_NAME to (!parsed.name.isNullOrBlank()).toString()
+            )
+        )
 
         if (!parsed.name.isNullOrBlank()) {
             val matchedItem = _uiState.value.items.find { item ->
@@ -361,12 +387,28 @@ class CompareViewModel @Inject constructor(
 
     fun confirmSaveComparison() {
         val title = _uiState.value.saveDialogTitleInput
+        val best = _uiState.value.results.find { it.isBestChoice }
+
+        AnalyticsManager.trackEvent(
+            AnalyticsEvents.COMPARISON_SAVED,
+            mapOf(
+                AnalyticsEvents.Params.ITEMS_COUNT to _uiState.value.items.size.toString(),
+                AnalyticsEvents.Params.UNIT_CATEGORY to (best?.product?.unit?.category?.name ?: "UNKNOWN")
+            )
+        )
+
         saveCurrentComparison(title)
         _uiState.update { it.copy(isSaveDialogOpen = false) }
     }
 
     fun restoreComparison(record: SavedComparison) {
         if (record.items.isEmpty()) return
+
+        AnalyticsManager.trackEvent(
+            AnalyticsEvents.HISTORY_RESTORED,
+            mapOf(AnalyticsEvents.Params.ITEMS_COUNT to record.items.size.toString())
+        )
+
         val (results, hasConflict) = calculateComparisonUseCase(record.items)
         _uiState.update { state ->
             state.copy(
@@ -414,6 +456,26 @@ class CompareViewModel @Inject constructor(
                 if (item.id == productId) transform(item) else item
             }
             val (results, hasConflict) = calculateComparisonUseCase(updatedList)
+
+            // Аналитика: предупреждение о несовместимости мер
+            if (hasConflict && !state.hasIncompatibleUnits) {
+                AnalyticsManager.trackEvent(AnalyticsEvents.INCOMPATIBLE_UNITS_WARNING)
+            }
+
+            // Аналитика: успешный расчет дельты цен
+            val best = results.find { it.isBestChoice }
+            val secondBest = results.filterNot { it.isBestChoice }.minByOrNull { it.unitPrice }
+            if (best != null && secondBest != null && !hasConflict) {
+                AnalyticsManager.trackEvent(
+                    AnalyticsEvents.COMPARISON_CALCULATED,
+                    mapOf(
+                        AnalyticsEvents.Params.ITEMS_COUNT to updatedList.size.toString(),
+                        AnalyticsEvents.Params.UNIT_CATEGORY to best.product.unit.category.name,
+                        AnalyticsEvents.Params.SAVINGS_PERCENT to String.format(Locale.US, "%.1f", secondBest.percentMoreExpensive)
+                    )
+                )
+            }
+
             state.copy(items = updatedList, results = results, hasIncompatibleUnits = hasConflict)
         }
     }

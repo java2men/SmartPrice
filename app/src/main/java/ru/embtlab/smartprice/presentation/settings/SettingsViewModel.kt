@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import ru.embtlab.smartprice.core.analytics.AnalyticsEvents
+import ru.embtlab.smartprice.core.analytics.AnalyticsManager
 import ru.embtlab.smartprice.domain.model.settings.AppSettings
 import ru.embtlab.smartprice.domain.model.settings.AppThemeMode
 import ru.embtlab.smartprice.domain.model.settings.CardStylePreset
@@ -25,6 +27,11 @@ class SettingsViewModel @Inject constructor(
     )
 
     fun onPresetChanged(preset: CardStylePreset) {
+        AnalyticsManager.trackEvent(
+            AnalyticsEvents.PRESET_CHANGED,
+            mapOf(AnalyticsEvents.Params.PRESET_NAME to preset.name)
+        )
+
         viewModelScope.launch { repository.setCardPreset(preset) }
     }
 

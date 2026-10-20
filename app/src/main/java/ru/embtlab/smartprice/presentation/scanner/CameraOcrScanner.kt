@@ -37,6 +37,8 @@ import androidx.core.view.WindowCompat
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import ru.embtlab.smartprice.core.analytics.AnalyticsEvents
+import ru.embtlab.smartprice.core.analytics.AnalyticsManager
 import ru.embtlab.smartprice.domain.model.ocr.ParsedPriceTag
 import ru.embtlab.smartprice.domain.model.product.ProductUnit
 import ru.embtlab.smartprice.domain.usecase.ocr.ParsePriceTagUseCase
@@ -52,7 +54,10 @@ fun CameraOcrScanner(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    BackHandler(onBack = onClose)
+    // Аналитика: открытие экрана сканера ценников
+    LaunchedEffect(Unit) {
+        AnalyticsManager.trackEvent(AnalyticsEvents.OCR_SCANNER_OPENED)
+    }
 
     val context = LocalContext.current
     val parser = remember { ParsePriceTagUseCase() }
@@ -65,9 +70,21 @@ fun CameraOcrScanner(
     var screenSize by remember { mutableStateOf(IntSize.Zero) }
     var frameRectOnScreen by remember { mutableStateOf<Rect?>(null) }
 
+    // Состояния заморозки кадра
     var isFrozen by remember { mutableStateOf(false) }
     var fullFrozenBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
+
+    // Теперь isFrozen уже объявлен и доступен для захвата в лямбду
+    val handleClose = {
+        AnalyticsManager.trackEvent(
+            AnalyticsEvents.OCR_SCANNER_CLOSED,
+            mapOf("was_frozen" to isFrozen.toString())
+        )
+        onClose()
+    }
+
+    BackHandler(onBack = handleClose)
 
     var selectedPrice by remember { mutableStateOf("") }
     var selectedQuantity by remember { mutableStateOf("") }
@@ -151,6 +168,16 @@ fun CameraOcrScanner(
 
                     allNumbers.addAll(rawMatches)
                     detectedNumbersList = allNumbers.distinct().take(10)
+
+                    // Аналитика: фиксация стоп-кадра и результат распознавания
+                    AnalyticsManager.trackEvent(
+                        AnalyticsEvents.OCR_FRAME_CAPTURED,
+                        mapOf(
+                            "detected_numbers_count" to detectedNumbersList.size.toString(),
+                            "has_auto_price" to selectedPrice.isNotBlank().toString(),
+                            "has_auto_quantity" to selectedQuantity.isNotBlank().toString()
+                        )
+                    )
                 }
                 .addOnCompleteListener { isProcessing = false }
         }
@@ -208,7 +235,7 @@ fun CameraOcrScanner(
             verticalAlignment = Alignment.CenterVertically
         ) {
             FilledTonalIconButton(
-                onClick = onClose,
+                onClick = handleClose,
                 shape = CircleShape,
                 colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = Color.Black.copy(alpha = 0.5f))
             ) {
@@ -231,7 +258,7 @@ fun CameraOcrScanner(
             }
         }
 
-        // Нижняя консоль действий
+        // Нижняя панель действий
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -259,7 +286,6 @@ fun CameraOcrScanner(
                     Box(modifier = Modifier.size(56.dp).clip(CircleShape).border(3.dp, Color.Black, CircleShape))
                 }
             } else {
-                // Выбор слота (Цена / Количество)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -390,6 +416,15 @@ fun CameraOcrScanner(
 
                     Button(
                         onClick = {
+                            // Аналитика: перенос данных в форму
+                            AnalyticsManager.trackEvent(
+                                AnalyticsEvents.OCR_DATA_APPLIED,
+                                mapOf(
+                                    "has_price" to selectedPrice.isNotBlank().toString(),
+                                    "has_quantity" to selectedQuantity.isNotBlank().toString(),
+                                    AnalyticsEvents.Params.UNIT_CATEGORY to selectedUnit.category.name
+                                )
+                            )
                             onParsed(
                                 ParsedPriceTag(
                                     price = selectedPrice.ifBlank { null },
