@@ -18,7 +18,10 @@ ksp = "2.3.11"
 camerax = "1.6.2"
 mlkitTextRecognition = "16.0.1"
 accompanistPermissions = "0.37.3"
-coreSplashscreen = "1.0.1"
+coreSplashscreen = "1.2.0"
+vkAds = "5.52.5"
+myTracker = "3.6.0"
+playServicesAdsIdentifier = "18.3.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -65,7 +68,17 @@ google-mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recog
 # Разрешения для Compose
 accompanist-permissions = { group = "com.google.accompanist", name = "accompanist-permissions", version.ref = "accompanistPermissions" }
 
+# Сплэш экран
 androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "coreSplashscreen" }
+
+# VK Ad Network SDK (myTarget)
+vk-ads-sdk = { group = "com.my.target", name = "mytarget-sdk", version.ref = "vkAds" }
+
+# MyTracker SDK
+mytracker-sdk = { group = "com.my.tracker", name = "mytracker-sdk", version.ref = "myTracker" }
+
+# Идентификатор рекламы (нужен для корректного таргетинга и атрибуции)
+google-play-services-ads-identifier = { group = "com.google.android.gms", name = "play-services-ads-identifier", version.ref = "playServicesAdsIdentifier" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

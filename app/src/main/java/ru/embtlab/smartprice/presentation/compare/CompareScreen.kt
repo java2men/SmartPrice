@@ -3,10 +3,12 @@ package ru.embtlab.smartprice.presentation.compare
 import android.Manifest
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -39,6 +41,7 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -64,10 +67,12 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import kotlinx.coroutines.launch
+import ru.embtlab.smartprice.core.ad.AdConfig
 import ru.embtlab.smartprice.domain.model.settings.CardStylePreset
 import ru.embtlab.smartprice.domain.model.product.DiscountType
 import ru.embtlab.smartprice.domain.model.product.ProductUnit
 import ru.embtlab.smartprice.core.ui.components.AutoScrollLazyColumn
+import ru.embtlab.smartprice.core.ui.components.ad.VkBannerAd
 import ru.embtlab.smartprice.presentation.scanner.CameraOcrScanner
 import ru.embtlab.smartprice.presentation.compare.components.cards.CompactProductSummaryCard
 import ru.embtlab.smartprice.presentation.compare.components.cards.ProductCard
@@ -353,7 +358,25 @@ fun CompareScreen(
                     }
                 }
             }
-        }
+        },
+        bottomBar = {
+            if (AdConfig.isBannerEnabled) {
+                AnimatedVisibility(
+                    visible = !isKeyboardOpen,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding(),
+                        color = MaterialTheme.colorScheme.surface
+                    ) {
+                        VkBannerAd(modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            }
+        },
     ) { innerPadding ->
 
         // Если настройки еще не вычитаны из DataStore — ждем первый кадр, не рендеря неверный стиль

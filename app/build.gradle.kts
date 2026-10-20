@@ -35,6 +35,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -70,6 +71,11 @@ dependencies {
     implementation(libs.accompanist.permissions)
 
     implementation(libs.androidx.core.splashscreen)
+
+    // Реклама и аналитика VK
+    implementation(libs.vk.ads.sdk)
+    implementation(libs.mytracker.sdk)
+    implementation(libs.google.play.services.ads.identifier)
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
