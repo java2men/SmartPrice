@@ -38,6 +38,42 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+
+    flavorDimensions += "distribution"
+
+    productFlavors {
+        create("rustore") {
+            dimension = "distribution"
+            applicationId = "ru.embtlab.smartprice"
+
+            // Ключи для сборки под RuStore
+            buildConfigField("String", "MY_TRACKER_KEY", "\"68878970625945961690\"")
+            buildConfigField("int", "VK_BANNER_SLOT_ID", "2093874")
+            buildConfigField("Boolean", "ADS_ENABLED", "true")
+        }
+
+        create("google") {
+            dimension = "distribution"
+            applicationId = "ru.embtlab.smartprice.play"
+
+            // Отдельные ключи из кабинетов, созданные для Google Play версии:
+            buildConfigField("String", "MY_TRACKER_KEY", "\"25906024298703320363\"")
+            buildConfigField("int", "VK_BANNER_SLOT_ID", "2094146") // ID слота для площадки Google Play
+            buildConfigField("Boolean", "ADS_ENABLED", "true")
+        }
+
+        create("free") {
+            dimension = "distribution"
+            applicationId = "ru.embtlab.smartprice.dev"
+            versionNameSuffix = "-dev"
+
+            // В свободной сборке ключи пустые, реклама отключена
+            buildConfigField("String", "MY_TRACKER_KEY", "\"\"")
+            buildConfigField("int", "VK_BANNER_SLOT_ID", "0")
+            buildConfigField("Boolean", "ADS_ENABLED", "false")
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -78,9 +114,21 @@ dependencies {
     implementation(libs.androidx.core.splashscreen)
 
     // Реклама и аналитика VK
-    implementation(libs.vk.ads.sdk)
-    implementation(libs.mytracker.sdk)
-    implementation(libs.google.play.services.ads.identifier)
+//    implementation(libs.vk.ads.sdk)
+//    implementation(libs.mytracker.sdk)
+//    implementation(libs.google.play.services.ads.identifier)
+
+    // Зависимости для RuStore (через add)
+    add("rustoreImplementation", libs.vk.ads.sdk)
+    add("rustoreImplementation", libs.mytracker.sdk)
+    add("rustoreImplementation", libs.google.play.services.ads.identifier)
+
+    // Зависимости для Google Play (через add)
+    add("googleImplementation", libs.vk.ads.sdk)
+    add("googleImplementation", libs.mytracker.sdk)
+    add("googleImplementation", libs.google.play.services.ads.identifier)
+
+    // Для free ничего из этого не подключается!
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

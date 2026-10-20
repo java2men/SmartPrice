@@ -24,7 +24,6 @@ fun VkBannerAd(
     onAdFailed: (String) -> Unit = {}
 ) {
     if (slotId <= 0) return
-
     val context = LocalContext.current
     val targetView = remember(slotId) {
         MyTargetView(context).apply {
@@ -38,11 +37,9 @@ fun VkBannerAd(
                 override fun onLoad(view: MyTargetView) {
                     onAdLoaded()
                 }
-
                 override fun onNoAd(error: IAdLoadingError, view: MyTargetView) {
                     onAdFailed(error.message)
                 }
-
                 override fun onShow(view: MyTargetView) {}
                 override fun onClick(view: MyTargetView) {}
             }

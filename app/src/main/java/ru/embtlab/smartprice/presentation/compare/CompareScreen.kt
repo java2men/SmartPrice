@@ -67,6 +67,7 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import kotlinx.coroutines.launch
+import ru.embtlab.smartprice.BuildConfig
 import ru.embtlab.smartprice.core.ad.AdConfig
 import ru.embtlab.smartprice.domain.model.settings.CardStylePreset
 import ru.embtlab.smartprice.domain.model.product.DiscountType
@@ -360,7 +361,8 @@ fun CompareScreen(
             }
         },
         bottomBar = {
-            if (AdConfig.isBannerEnabled) {
+            // В сборке free BuildConfig.ADS_ENABLED равен false — код баннера даже не вызывается
+            if (BuildConfig.ADS_ENABLED && AdConfig.isBannerEnabled) {
                 AnimatedVisibility(
                     visible = !isKeyboardOpen,
                     enter = fadeIn() + expandVertically(),
