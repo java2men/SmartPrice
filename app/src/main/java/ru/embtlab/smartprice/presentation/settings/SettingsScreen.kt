@@ -41,14 +41,15 @@ import ru.embtlab.smartprice.presentation.settings.components.SettingsSection
 import ru.embtlab.smartprice.presentation.theme.icons.AppIcons
 import ru.embtlab.smartprice.presentation.theme.icons.ArrowBack
 
+// presentation/settings/SettingsScreen.kt
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
-    val settingsState by viewModel.settings.collectAsState()
-
+    val currentSettings by viewModel.settings.collectAsState()
     var showPresetDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
 
@@ -67,16 +68,7 @@ fun SettingsScreen(
             )
         }
     ) { innerPadding ->
-        val currentSettings = settingsState
-
-        if (currentSettings == null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            )
-            return@Scaffold
-        }
+        // Проверка на null больше не требуется, экран сразу начинает отрисовку с полным контентом!
 
         if (showPresetDialog) {
             SettingsPresetDialog(
@@ -132,7 +124,7 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(vertical = 16.dp)
         ) {
-            // Блок 1: Способы ввода (Голос и Сканер)
+            // Блок 1: Способы ввода
             item {
                 SettingsSection(title = "Быстрый ввод") {
                     SettingsItemRow(
@@ -199,12 +191,12 @@ fun SettingsScreen(
                 SettingsSection(title = "О приложении") {
                     SettingsItemRow(
                         title = "Версия",
-                        subtitle = "Версия ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+                        subtitle = "Версия ${ru.embtlab.smartprice.BuildConfig.VERSION_NAME} (${ru.embtlab.smartprice.BuildConfig.VERSION_CODE})"
                     )
                     HorizontalDivider()
                     SettingsItemRow(
                         title = "Разработчик",
-                        subtitle = "EmbtLab, ${BuildConfig.BUILD_YEAR}"
+                        subtitle = "EmbtLab, ${ru.embtlab.smartprice.BuildConfig.BUILD_YEAR}"
                     )
                 }
             }

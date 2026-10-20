@@ -1,7 +1,12 @@
 package ru.embtlab.smartprice.data.repository
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import ru.embtlab.smartprice.data.local.datastore.SettingsDataStore
+import ru.embtlab.smartprice.di.ApplicationScope
 import ru.embtlab.smartprice.domain.model.settings.AppSettings
 import ru.embtlab.smartprice.domain.model.settings.AppThemeMode
 import ru.embtlab.smartprice.domain.model.settings.CardStylePreset
@@ -11,10 +16,17 @@ import javax.inject.Singleton
 
 @Singleton
 class SettingsRepositoryImpl @Inject constructor(
-    private val dataStore: SettingsDataStore
+    private val dataStore: SettingsDataStore,
+    @ApplicationScope private val externalScope: CoroutineScope
 ) : SettingsRepository {
 
-    override val settingsFlow: Flow<AppSettings> = dataStore.settingsFlow
+    // Горячий кэш в памяти: всегда готов, без повторных чтений диска
+    override val settingsFlow: StateFlow<AppSettings> = dataStore.settingsFlow
+        .stateIn(
+            scope = externalScope,
+            started = SharingStarted.Eagerly,
+            initialValue = AppSettings()
+        )
 
     override val recentProductNamesFlow: Flow<List<String>> = dataStore.recentProductNamesFlow
 

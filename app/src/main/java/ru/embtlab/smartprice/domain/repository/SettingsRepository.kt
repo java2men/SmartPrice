@@ -1,12 +1,13 @@
 package ru.embtlab.smartprice.domain.repository
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import ru.embtlab.smartprice.domain.model.settings.AppSettings
 import ru.embtlab.smartprice.domain.model.settings.AppThemeMode
 import ru.embtlab.smartprice.domain.model.settings.CardStylePreset
 
 interface SettingsRepository {
-    val settingsFlow: Flow<AppSettings>
+    val settingsFlow: StateFlow<AppSettings>
     val recentProductNamesFlow: Flow<List<String>>
 
     suspend fun addRecentProductName(name: String)
