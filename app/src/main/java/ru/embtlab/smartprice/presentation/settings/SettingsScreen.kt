@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import ru.embtlab.smartprice.BuildConfig
 import ru.embtlab.smartprice.domain.model.settings.AppThemeMode
 import ru.embtlab.smartprice.presentation.settings.dialogs.SettingsPresetDialog
 import ru.embtlab.smartprice.presentation.settings.components.SettingsItemRow
@@ -198,12 +199,12 @@ fun SettingsScreen(
                 SettingsSection(title = "О приложении") {
                     SettingsItemRow(
                         title = "Версия",
-                        subtitle = "Версия 1.0.0"
+                        subtitle = "Версия ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
                     )
                     HorizontalDivider()
                     SettingsItemRow(
                         title = "Разработчик",
-                        subtitle = "EMBT Lab, 2026"
+                        subtitle = "EmbtLab, ${BuildConfig.BUILD_YEAR}"
                     )
                 }
             }

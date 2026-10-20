@@ -1,3 +1,5 @@
+import java.util.Calendar
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -16,7 +18,10 @@ android {
         minSdk = 26
         targetSdk = 37
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
+
+        val buildYear = Calendar.getInstance().get(Calendar.YEAR).toString()
+        buildConfigField("String", "BUILD_YEAR", "\"$buildYear\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
