@@ -1,14 +1,16 @@
 package ru.embtlab.smartprice.core.ui.components.ad
 
+import android.util.Log
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.my.target.ads.MyTargetView
 import com.my.target.ads.MyTargetView.AdSize
@@ -25,6 +27,7 @@ fun VkBannerAd(
 ) {
     if (slotId <= 0) return
     val context = LocalContext.current
+
     val targetView = remember(slotId) {
         MyTargetView(context).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -35,12 +38,19 @@ fun VkBannerAd(
             setAdSize(adSize)
             listener = object : MyTargetView.MyTargetViewListener {
                 override fun onLoad(view: MyTargetView) {
+                    Log.d("VkBannerAd", "Баннер успешно загружен!")
                     onAdLoaded()
                 }
+
                 override fun onNoAd(error: IAdLoadingError, view: MyTargetView) {
+                    Log.e("VkBannerAd", "Ошибка загрузки: ${error.message} (код: ${error.code})")
                     onAdFailed(error.message)
                 }
-                override fun onShow(view: MyTargetView) {}
+
+                override fun onShow(view: MyTargetView) {
+                    Log.d("VkBannerAd", "Баннер отображён на экране")
+                }
+
                 override fun onClick(view: MyTargetView) {}
             }
             load()
@@ -56,7 +66,7 @@ fun VkBannerAd(
     AndroidView(
         modifier = modifier
             .fillMaxWidth()
-            .wrapContentHeight(),
+            .height(50.dp),
         factory = { targetView }
     )
 }

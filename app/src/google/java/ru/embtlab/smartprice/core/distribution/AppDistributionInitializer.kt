@@ -10,6 +10,7 @@ import ru.embtlab.smartprice.core.analytics.AnalyticsManager
 class AppDistributionInitializer : DistributionInitializer {
     override fun initialize(application: Application) {
         AnalyticsManager.init(application)
+
         if (BuildConfig.DEBUG) {
             MyTargetManager.setDebugMode(true)
             if (AdConfig.testDeviceIds.isNotEmpty()) {
@@ -19,6 +20,7 @@ class AppDistributionInitializer : DistributionInitializer {
                 MyTargetManager.setSdkConfig(config)
             }
         }
+
         MyTargetManager.initSdk(application)
     }
 }
